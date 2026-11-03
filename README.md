@@ -59,8 +59,6 @@ powershell -ExecutionPolicy Bypass -File install.ps1
 
 Registra la carpeta del repo en la lista de complementos de Fusion con *Ejecutar al inicio*. También se puede añadir a mano: **Utilidades > Complementos** (Mayús+S) > **+** > esta carpeta.
 
-Para hacer una release: sube la versión en `FDMOverhang.manifest`, ejecuta `powershell -ExecutionPolicy Bypass -File installer\make_release.ps1` (deja el zip en `dist/`, que no va en git) y sube el zip a una Release de GitHub.
-
 ## Cómo funciona
 
 1. Tesela cada cuerpo (`MeshManager`; en los cuerpos de malla, su propia malla) y lo pasa a coordenadas del raíz si está en una ocurrencia.

@@ -59,8 +59,6 @@ powershell -ExecutionPolicy Bypass -File install.ps1
 
 It registers the repo folder in Fusion's add-in list with *Run on startup*. It can also be added by hand: **Utilities > Add-ins** (Shift+S) > **+** > this folder.
 
-To make a release: bump the version in `FDMOverhang.manifest`, run `powershell -ExecutionPolicy Bypass -File installer\make_release.ps1` (it leaves the zip in `dist/`, which is not in git) and upload the zip to a GitHub Release.
-
 ## How it works
 
 1. Tessellates each body (`MeshManager`; mesh bodies use their own mesh) and moves it to root coordinates if it is in an occurrence.
