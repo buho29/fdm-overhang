@@ -37,6 +37,20 @@ Lo que está justo en el límite (una gota o un chaflán a 45° exactos con el l
 
 ## Instalación
 
+### Windows
+
+1. Descarga `FDMOverhang-<versión>.zip` de las [Releases](https://github.com/buho29/fdm-overhang/releases) y descomprímelo entero.
+2. Haz doble clic en `instalar.bat`. Copia la carpeta `FDMOverhang` en la carpeta de complementos de Fusion y no pide permisos de administrador.
+3. En Fusion: **Utilidades > Complementos** (Mayús+S) > *FDMOverhang* > **Ejecutar**, y marca *Al iniciar*.
+
+Para actualizar, ejecuta el `instalar.bat` de la versión nueva: se conservan los últimos valores del diálogo. Para quitarlo, usa `desinstalar.bat`. No los uses en un equipo con la instalación de desarrollo de `install.ps1`: tendrías el complemento dos veces.
+
+### Mac
+
+Copia la carpeta `FDMOverhang` del zip a `~/Library/Application Support/Autodesk/Autodesk Fusion 360/API/AddIns/`.
+
+### Desde el repo (desarrollo)
+
 Con Fusion cerrado:
 
 ```powershell
@@ -45,11 +59,13 @@ powershell -ExecutionPolicy Bypass -File install.ps1
 
 Registra la carpeta del repo en la lista de complementos de Fusion con *Ejecutar al inicio*. También se puede añadir a mano: **Utilidades > Complementos** (Mayús+S) > **+** > esta carpeta.
 
+Para hacer una release: sube la versión en `FDMOverhang.manifest`, ejecuta `powershell -ExecutionPolicy Bypass -File installer\make_release.ps1` (deja el zip en `dist/`, que no va en git) y sube el zip a una Release de GitHub.
+
 ## Cómo funciona
 
 1. Tesela cada cuerpo (`MeshManager`; en los cuerpos de malla, su propia malla) y lo pasa a coordenadas del raíz si está en una ocurrencia.
 2. Clasifica cada triángulo por la normal media de sus vértices (la de la superficie): si mira hacia abajo, su inclinación desde la horizontal es `acos(-n·arriba)`.
-3. Pinta los triángulos marcados con `CustomGraphicsMesh` y color por vértice, por encima del cuerpo (`depthPriority`). Lo que no está marcado se ve con el aspecto normal del cuerpo.
+3. Pinta los triángulos marcados con `CustomGraphicsMesh` y color por vértice. Fusion dibuja el cuerpo con su propia malla, así que la capa se aparta de la superficie, a lo largo de la normal, algo más que la mayor de las dos tolerancias (la de esa malla y la del análisis): si no, queda medio enterrada y se ve a manchas. Lo que no está marcado se ve con el aspecto normal del cuerpo.
 
 La clasificación está en [overhang/analysis.py](overhang/analysis.py), sin dependencias de Fusion. Sus pruebas:
 

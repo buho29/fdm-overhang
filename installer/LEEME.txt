@@ -1,0 +1,34 @@
+Voladizos FDM (FDMOverhang) - complemento de Fusion 360
+=======================================================
+
+Pinta encima del modelo lo que va a necesitar soporte, como la vista de
+soportes de un laminador: en rojo y naranja lo que mira hacia abajo con
+menos del ángulo límite desde la horizontal, y en verde lo que apoya en la
+cama. No modifica el diseño.
+
+Instalar (Windows)
+------------------
+1. Descomprime el zip entero en cualquier carpeta.
+2. Haz doble clic en instalar.bat.
+3. En Fusion 360: Utilidades > Complementos (Mayús+S) > FDMOverhang > Ejecutar,
+   y marca "Al iniciar" para que arranque siempre.
+
+El botón queda en DISEÑO > INSPECCIONAR > Voladizos FDM.
+
+Para actualizar a una versión nueva, ejecuta su instalar.bat: se conservan
+los últimos valores del diálogo. Si Fusion está abierto, detén el
+complemento y vuelve a ejecutarlo.
+
+Desinstalar
+-----------
+Detén el complemento en Fusion y haz doble clic en desinstalar.bat.
+
+Mac
+---
+Copia la carpeta FDMOverhang a
+~/Library/Application Support/Autodesk/Autodesk Fusion 360/API/AddIns/
+
+Más información
+---------------
+FDMOverhang/README.md (en inglés, README.en.md), o el repositorio:
+https://github.com/buho29/fdm-overhang

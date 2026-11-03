@@ -6,7 +6,7 @@
   "description": {
     "": "Paints overhangs like a slicer: faces below the limit angle from the horizontal in red, what rests on the bed in green. / Pinta los voladizos como un laminador: en rojo lo que queda por debajo del ángulo límite desde la horizontal y en verde lo que apoya en la cama."
   },
-  "version": "0.1.0",
+  "version": "1.0.0",
   "runOnStartup": true,
   "supportedOS": "windows|mac",
   "editEnabled": true

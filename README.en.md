@@ -37,6 +37,20 @@ Faces exactly at the limit (a teardrop or a chamfer at exactly 45° with the lim
 
 ## Installation
 
+### Windows
+
+1. Download `FDMOverhang-<version>.zip` from the [Releases](https://github.com/buho29/fdm-overhang/releases) and unzip all of it.
+2. Double-click `instalar.bat`. It copies the `FDMOverhang` folder into Fusion's add-ins folder and needs no administrator rights.
+3. In Fusion: **Utilities > Add-ins** (Shift+S) > *FDMOverhang* > **Run**, and tick *Run on Startup*.
+
+To update, run the new version's `instalar.bat`: the last dialog values are kept. To remove it, use `desinstalar.bat`. Don't use them on a machine with the `install.ps1` development install: you would get the add-in twice.
+
+### Mac
+
+Copy the `FDMOverhang` folder from the zip to `~/Library/Application Support/Autodesk/Autodesk Fusion 360/API/AddIns/`.
+
+### From the repo (development)
+
 With Fusion closed:
 
 ```powershell
@@ -45,11 +59,13 @@ powershell -ExecutionPolicy Bypass -File install.ps1
 
 It registers the repo folder in Fusion's add-in list with *Run on startup*. It can also be added by hand: **Utilities > Add-ins** (Shift+S) > **+** > this folder.
 
+To make a release: bump the version in `FDMOverhang.manifest`, run `powershell -ExecutionPolicy Bypass -File installer\make_release.ps1` (it leaves the zip in `dist/`, which is not in git) and upload the zip to a GitHub Release.
+
 ## How it works
 
 1. Tessellates each body (`MeshManager`; mesh bodies use their own mesh) and moves it to root coordinates if it is in an occurrence.
 2. Classifies each triangle by the average normal of its vertices (the surface normal): if it points down, its inclination from the horizontal is `acos(-n·up)`.
-3. Paints the marked triangles with a `CustomGraphicsMesh` with per-vertex colours, on top of the body (`depthPriority`). Unmarked areas keep the body's normal appearance.
+3. Paints the marked triangles with a `CustomGraphicsMesh` with per-vertex colours. Fusion draws the body with its own mesh, so the layer is lifted off the surface, along the normal, a little more than the larger of the two tolerances (that mesh's and the analysis one's): otherwise it is half buried and shows up in patches. Unmarked areas keep the body's normal appearance.
 
 The classification is in [overhang/analysis.py](overhang/analysis.py), with no Fusion dependencies. Its tests:
 
