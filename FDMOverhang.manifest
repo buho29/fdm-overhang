@@ -1,0 +1,13 @@
+{
+  "autodeskProduct": "Fusion360",
+  "type": "addin",
+  "id": "cea29131-9c8f-4960-a1d1-679ef8a45df8",
+  "author": "buho29",
+  "description": {
+    "": "Paints overhangs like a slicer: faces below the limit angle from the horizontal in red, what rests on the bed in green. / Pinta los voladizos como un laminador: en rojo lo que queda por debajo del ángulo límite desde la horizontal y en verde lo que apoya en la cama."
+  },
+  "version": "0.1.0",
+  "runOnStartup": true,
+  "supportedOS": "windows|mac",
+  "editEnabled": true
+}
