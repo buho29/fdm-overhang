@@ -29,6 +29,7 @@ Una pieza real vista desde abajo y cortada con un análisis de sección, con el 
 | Ángulo límite (°) | Medido desde la horizontal, como en PrusaSlicer y Orca: 45° para la mayoría de materiales; 30° si la impresora y el material lo aguantan |
 | Degradado | Rojo → naranja según la inclinación; sin marcar, todo rojo |
 | Calidad de la malla | Teselado *Baja*, *Normal* o *Alta*. Las curvas se clasifican por triángulos: con más calidad, el borde de la zona marcada es más fino |
+| Mantener al cerrar | La capa se queda al cerrar el diálogo y se recalcula cada vez que termina un comando que pueda cambiar el modelo. Para quitarla, se vuelve a abrir el diálogo y se desmarca. Solo dura mientras el diseño está abierto: no se guarda en el archivo |
 
 En **Resultado** salen el área en voladizo (total, porcentaje de la superficie y por cuerpo), el ángulo del peor voladizo y el área apoyada en la cama, con un aviso si nada apoya en plano.
 

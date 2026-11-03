@@ -29,6 +29,7 @@ A real part seen from below and cut with a section analysis, with the limit at 3
 | Limit angle (°) | Measured from the horizontal, as in PrusaSlicer and Orca: 45° for most materials; 30° if the printer and material can handle it |
 | Gradient | Red → orange by inclination; unchecked, everything red |
 | Mesh quality | *Low*, *Normal* or *High* tessellation. Curves are classified per triangle: higher quality gives a finer edge to the marked area |
+| Keep when closed | The layer stays after closing the dialog and is recomputed after every command that may change the model. To remove it, open the dialog again and uncheck this. It only lasts while the design is open: it is not saved in the file |
 
 **Result** shows the overhang area (total, percentage of the surface and per body), the angle of the worst overhang and the area on the bed, with a warning if nothing rests flat on it.
 

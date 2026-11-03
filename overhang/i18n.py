@@ -40,6 +40,11 @@ EN = {
     'Normal': 'Normal',
     'Alta': 'High',
     'Resultado': 'Result',
+    'Mantener al cerrar': 'Keep when closed',
+    'La capa se queda al cerrar el diálogo y se recalcula cada vez que cambia el modelo. '
+    'Para quitarla, vuelve a abrir el diálogo y desmárcala. No se guarda en el archivo.':
+        'The layer stays after closing the dialog and is recomputed whenever the model changes. '
+        'To remove it, open the dialog again and uncheck this. It is not saved in the file.',
     # ------------------------------------------------ resultado
     'Abre un diseño (espacio de trabajo DISEÑO).': 'Open a design (DESIGN workspace).',
     'No hay cuerpos que analizar.': 'There are no bodies to analyse.',

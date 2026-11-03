@@ -25,7 +25,9 @@ from overhang.i18n import tr, set_language  # noqa: E402
 CMD_ID = 'buhoFdmOverhang'
 WORKSPACE_ID = 'FusionSolidEnvironment'   # DISEÑO
 PANEL_IDS = ('InspectPanel',)              # INSPECCIONAR (hay paneles con el mismo id en otros espacios)
-GROUP_ID = 'fdm_overhang'
+GROUP_ID = 'fdm_overhang'          # capa de la vista previa, dentro del diálogo
+KEEP_ID = 'fdm_overhang_keep'      # capa que se queda al cerrar con "Mantener al cerrar"
+KEEP_EVENT = 'buhoFdmOverhangKeep'
 SETTINGS = os.path.join(HERE, 'settings.json')
 TOL_CM = 0.001   # lo que está a menos de 0.01 mm de la cama apoya en ella
 
@@ -40,6 +42,7 @@ _ui = _app.userInterface
 _handlers = []
 _state = {}     # comando abierto y último resultado (útil para depurar)
 _meshes = {}    # (entityToken, calidad) -> malla en coordenadas del raíz; se vacía al cerrar el diálogo
+_keep = {}      # capa que queda al cerrar: 'design', 'settings', 'bodies', 'face'. Solo en memoria
 
 
 def _default_bed():
@@ -53,7 +56,7 @@ def _default_bed():
 
 def _load_settings():
     s = {'bodies': 'visible', 'bed': _default_bed(), 'own_bed': False, 'angle': 45, 'gradient': True,
-         'quality': 'normal'}
+         'quality': 'normal', 'keep': False}
     try:
         with open(SETTINGS, encoding='utf-8') as f:
             s.update(json.load(f))
@@ -83,7 +86,8 @@ def _choice(inputs, key, options):
 def _read(inputs):
     return {'bodies': _choice(inputs, 'bodies', BODIES), 'bed': _choice(inputs, 'bed', BEDS),
             'own_bed': inputs.itemById('own_bed').value, 'angle': inputs.itemById('angle').valueOne,
-            'gradient': inputs.itemById('gradient').value, 'quality': _choice(inputs, 'quality', QUALITIES)}
+            'gradient': inputs.itemById('gradient').value, 'quality': _choice(inputs, 'quality', QUALITIES),
+            'keep': inputs.itemById('keep').value}
 
 
 def _visible_bodies(root):
@@ -123,12 +127,25 @@ def _mesh(body, quality):
     return _meshes[key]
 
 
-def _clear():
-    design = adsk.fusion.Design.cast(_app.activeProduct)
-    if design:
+def _clear(group_id=GROUP_ID, design=None):
+    design = design or adsk.fusion.Design.cast(_app.activeProduct)
+    if design and design.isValid:
         groups = design.rootComponent.customGraphicsGroups
-        for g in [g for g in groups if g.id == GROUP_ID]:
+        for g in [g for g in groups if g.id == group_id]:
             g.deleteMe()
+
+
+def _paint(design, layers, group_id):
+    if not layers:
+        return
+    grp = design.rootComponent.customGraphicsGroups.add()
+    grp.id = group_id
+    for tc, tn, tcol in layers:
+        coords = adsk.fusion.CustomGraphicsCoordinates.create(tc)
+        coords.colors = tcol
+        mesh = grp.addMesh(coords, list(range(len(tc) // 3)), tn, [])
+        mesh.color = adsk.fusion.CustomGraphicsVertexColorEffect.create()
+        mesh.depthPriority = 1   # por encima del cuerpo donde coincidan
 
 
 def _update_visibility(inputs):
@@ -151,39 +168,60 @@ def _draw(inputs):
     distinto, para no lanzar otra vista previa."""
     _clear()
     layers = []
+    design = adsk.fusion.Design.cast(_app.activeProduct)
     try:
-        html, layers = _analyse(inputs)
+        s = _read(inputs)
+        _save_settings(s)
+        sel = inputs.itemById('body_sel')
+        bodies = [sel.selection(i).entity for i in range(sel.selectionCount)]
+        sel = inputs.itemById('face_sel')
+        face = sel.selection(0).entity if sel.selectionCount else None
+        _state['last'] = {'design': design, 'settings': s, 'bodies': bodies, 'face': face}
+        html, layers = _analyse(design, s, bodies, face)
     except Exception:
         html = '<b><font color="#d33">✖ %s</font></b><br>%s' % (
             tr('Error interno del complemento:'), traceback.format_exc().replace('\n', '<br>'))
     if _state.get('html') != html:
         _state['html'] = html
         inputs.itemById('info').formattedText = html
-    design = adsk.fusion.Design.cast(_app.activeProduct)
-    if design and layers:
-        grp = design.rootComponent.customGraphicsGroups.add()
-        grp.id = GROUP_ID
-        for tc, tn, tcol in layers:
-            coords = adsk.fusion.CustomGraphicsCoordinates.create(tc)
-            coords.colors = tcol
-            mesh = grp.addMesh(coords, list(range(len(tc) // 3)), tn, [])
-            mesh.color = adsk.fusion.CustomGraphicsVertexColorEffect.create()
-            mesh.depthPriority = 1   # por encima del cuerpo donde coincidan
+    if design:
+        _paint(design, layers, GROUP_ID)
     _app.activeViewport.refresh()
 
 
-def _analyse(inputs):
-    """(html del resultado, [(coords, normales, colores) de cada cuerpo con algo que pintar])."""
-    design = adsk.fusion.Design.cast(_app.activeProduct)
+def _repaint_keep():
+    """Vuelve a pintar la capa que se quedó al cerrar (fuera del diálogo, así que no se deshace sola).
+    Recalcula las mallas: el modelo puede haber cambiado."""
+    design = _keep.get('design')
+    if not design or not design.isValid:
+        _keep.clear()
+        return
+    _clear(KEEP_ID, design)
+    _meshes.clear()
+    try:
+        bodies = [b for b in _keep['bodies'] if b.isValid]
+        face = _keep['face'] if _keep['face'] and _keep['face'].isValid else None
+        _, layers = _analyse(design, _keep['settings'], bodies, face)
+        _paint(design, layers, KEEP_ID)
+    finally:
+        _meshes.clear()
+    _app.activeViewport.refresh()
+
+
+def _drop_keep():
+    _clear(KEEP_ID, _keep.get('design'))
+    _keep.clear()
+
+
+def _analyse(design, s, picked, face):
+    """(html del resultado, [(coords, normales, colores) de cada cuerpo con algo que pintar]).
+    s son los ajustes del diálogo (_read); picked, los cuerpos elegidos; face, la cara de la cama o None."""
     if not design:
         return tr('Abre un diseño (espacio de trabajo DISEÑO).'), []
-    s = _read(inputs)
-    _save_settings(s)
     root = design.rootComponent
 
     if s['bodies'] == 'pick':
-        sel = inputs.itemById('body_sel')
-        bodies = [sel.selection(i).entity for i in range(sel.selectionCount)]
+        bodies = picked
         if not bodies:
             return tr('Elige los cuerpos.'), []
     else:
@@ -192,10 +230,9 @@ def _analyse(inputs):
             return tr('No hay cuerpos que analizar.'), []
 
     if s['bed'] == 'face':
-        sel = inputs.itemById('face_sel')
-        if not sel.selectionCount:
+        face = adsk.fusion.BRepFace.cast(face)
+        if not face:
             return tr('Elige la cara plana que va sobre la cama.'), []
-        face = adsk.fusion.BRepFace.cast(sel.selection(0).entity)
         _, n = face.evaluator.getNormalAtPoint(face.pointOnFace)
         up = A.unit((-n.x, -n.y, -n.z))   # la normal de la cara apunta hacia la cama
     else:
@@ -241,6 +278,7 @@ class _CreatedHandler(adsk.core.CommandCreatedEventHandler):
         try:
             cmd = args.command
             _state['cmd'] = cmd
+            _drop_keep()   # mientras el diálogo está abierto se ve la vista previa
             _state.pop('html', None)
             cmd.isOKButtonVisible = False   # solo se mira: no hay nada que aceptar
             cmd.cancelButtonText = tr('Cerrar')
@@ -272,6 +310,9 @@ class _CreatedHandler(adsk.core.CommandCreatedEventHandler):
                                                 adsk.core.DropDownStyles.TextListDropDownStyle)
             for key, label, _ in QUALITIES:
                 dd.listItems.add(tr(label), key == s['quality'])
+            keep = inputs.addBoolValueInput('keep', tr('Mantener al cerrar'), True, '', bool(s['keep']))
+            keep.tooltip = tr('La capa se queda al cerrar el diálogo y se recalcula cada vez que cambia el modelo. '
+                              'Para quitarla, vuelve a abrir el diálogo y desmárcala. No se guarda en el archivo.')
             inputs.addTextBoxCommandInput('info', tr('Resultado'), '', 8, True)
             _update_visibility(inputs)
 
@@ -308,7 +349,33 @@ class _DestroyHandler(adsk.core.CommandEventHandler):
             _meshes.clear()
             _state.pop('cmd', None)
             _state.pop('html', None)
+            last = _state.pop('last', None)
+            if last and last['settings'].get('keep') and last['design']:
+                _keep.update(last)
+                # se pinta cuando el comando ya ha terminado: lo que se pinta dentro, Fusion lo deshace
+                _app.fireCustomEvent(KEEP_EVENT)
             _app.activeViewport.refresh()
+        except Exception:
+            pass
+
+
+class _KeepHandler(adsk.core.CustomEventHandler):
+    def notify(self, args):
+        try:
+            _repaint_keep()
+        except Exception:
+            pass
+
+
+class _TerminatedHandler(adsk.core.ApplicationCommandEventHandler):
+    """Con la capa mantenida, la recalcula al terminar cualquier comando que pueda haber cambiado el modelo."""
+    def notify(self, args):
+        try:
+            if (_keep and args.commandId not in (CMD_ID, 'SelectCommand')
+                    and args.terminationReason == adsk.core.CommandTerminationReason.CompletedTerminationReason):
+                design = _keep.get('design')
+                if design and design.isValid and _app.activeProduct == design:
+                    _app.fireCustomEvent(KEEP_EVENT)
         except Exception:
             pass
 
@@ -341,6 +408,13 @@ def run(context):
         h = _CreatedHandler()
         cmd_def.commandCreated.add(h)
         _handlers.append(h)
+        _app.unregisterCustomEvent(KEEP_EVENT)   # por si quedó de una carga anterior
+        h = _KeepHandler()
+        _app.registerCustomEvent(KEEP_EVENT).add(h)
+        _handlers.append(h)
+        h = _TerminatedHandler()
+        _ui.commandTerminated.add(h)
+        _handlers.append(h)
         for pid in PANEL_IDS:
             panel = _panel(pid)
             if panel and not panel.controls.itemById(CMD_ID):
@@ -352,6 +426,11 @@ def run(context):
 def stop(context):
     try:
         _clear()
+        _drop_keep()
+        for h in _handlers:
+            if isinstance(h, _TerminatedHandler):
+                _ui.commandTerminated.remove(h)
+        _app.unregisterCustomEvent(KEEP_EVENT)
         for pid in PANEL_IDS:
             panel = _panel(pid)
             ctrl = panel.controls.itemById(CMD_ID) if panel else None
