@@ -45,6 +45,37 @@ EN = {
     'Para quitarla, vuelve a abrir el diálogo y desmárcala. No se guarda en el archivo.':
         'The layer stays after closing the dialog and is recomputed whenever the model changes. '
         'To remove it, open the dialog again and uncheck this. It is not saved in the file.',
+    # ------------------------------------------------ espesor de pared
+    'Espesor de pared': 'Wall thickness',
+    'Mapa de color del espesor de pared, de rojo (fino) a azul (grueso), o solo lo que no llega al '
+    'espesor mínimo. No modifica el diseño.':
+        'Colour map of the wall thickness, from red (thin) to blue (thick), or only what is below the '
+        'minimum thickness. The design is not modified.',
+    'Espesor mínimo': 'Minimum thickness',
+    'Pintar': 'Paint',
+    'Mapa de color': 'Colour map',
+    'Solo lo que no llega al mínimo': 'Only what is below the minimum',
+    'Escala desde': 'Scale from',
+    'Escala hasta': 'Scale to',
+    'Resolución': 'Resolution',
+    'Rápida (2 mm)': 'Fast (2 mm)',
+    'Normal (1 mm)': 'Normal (1 mm)',
+    'Fina (0,5 mm)': 'Fine (0.5 mm)',
+    'Lado máximo de los triángulos con los que se mide. Más fina, más detalle y más lento.':
+        'Maximum side of the triangles used to measure. Finer is more detailed and slower.',
+    'La capa se queda al cerrar el diálogo, hasta que cambie alguno de los cuerpos: '
+    'entonces se quita y hay que volver a abrir el diálogo. No se guarda en el archivo.':
+        'The layer stays after closing the dialog until one of the bodies changes: then it is removed and '
+        'the dialog has to be opened again. It is not saved in the file.',
+    'menos de %s mm': 'below %s mm',
+    'El espesor mínimo tiene que ser mayor que 0.': 'The minimum thickness must be greater than 0.',
+    'El final de la escala tiene que ser mayor que el principio.': 'The end of the scale must be greater than its start.',
+    '%s Lo más fino: <b>%s mm</b> (%s)': '%s Thinnest: <b>%s mm</b> (%s)',
+    'Por debajo de %s mm: <b>%.0f mm²</b> (%.1f %% de la superficie)':
+        'Below %s mm: <b>%.0f mm²</b> (%.1f %% of the surface)',
+    'Malla abierta, puede medir de más: %s': 'Open mesh, it may measure too much: %s',
+    'Espesor de pared: error': 'Wall thickness: error',
+    'No hay cuerpos sólidos que medir.': 'There are no solid bodies to measure.',
     # ------------------------------------------------ resultado
     'Abre un diseño (espacio de trabajo DISEÑO).': 'Open a design (DESIGN workspace).',
     'No hay cuerpos que analizar.': 'There are no bodies to analyse.',

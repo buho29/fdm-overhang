@@ -13,7 +13,7 @@ Instalar (Windows)
 3. En Fusion 360: Utilidades > Complementos (Mayús+S) > FDMOverhang > Ejecutar,
    y marca "Al iniciar" para que arranque siempre.
 
-El botón queda en DISEÑO > INSPECCIONAR > Voladizos FDM.
+Los botones quedan en DISEÑO > INSPECCIONAR > Voladizos FDM y Espesor de pared.
 
 Para actualizar a una versión nueva, ejecuta su instalar.bat: se conservan
 los últimos valores del diálogo. Si Fusion está abierto, detén el

@@ -11,13 +11,14 @@ $addin = Join-Path $stage 'FDMOverhang'
 $zip = Join-Path $dist "FDMOverhang-$version.zip"
 
 if (Test-Path $stage) { Remove-Item $stage -Recurse -Force }
-foreach ($d in 'overhang', 'resources', 'img') { New-Item -ItemType Directory -Force (Join-Path $addin $d) | Out-Null }
+foreach ($d in 'overhang', 'resources', 'resources\thickness', 'img') { New-Item -ItemType Directory -Force (Join-Path $addin $d) | Out-Null }
 
 # Lo que carga Fusion (sin settings.json, __pycache__, pruebas, install.ps1 ni este instalador)
 Copy-Item (Join-Path $root 'FDMOverhang.manifest'), (Join-Path $root 'FDMOverhang.py'), (Join-Path $root 'LICENSE'),
           (Join-Path $root 'README.md'), (Join-Path $root 'README.en.md') $addin
 Copy-Item (Join-Path $root 'overhang\*.py') (Join-Path $addin 'overhang')
 Copy-Item (Join-Path $root 'resources\*.png') (Join-Path $addin 'resources')
+Copy-Item (Join-Path $root 'resources\thickness\*.png') (Join-Path $addin 'resources\thickness')
 Copy-Item (Join-Path $root 'img\*.png') (Join-Path $addin 'img')   # las imágenes de los README
 Copy-Item (Join-Path $PSScriptRoot 'instalar.bat'), (Join-Path $PSScriptRoot 'desinstalar.bat'),
           (Join-Path $PSScriptRoot 'LEEME.txt'), (Join-Path $PSScriptRoot 'README.txt') $stage

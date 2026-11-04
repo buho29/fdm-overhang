@@ -9,7 +9,7 @@ Paints over the model what will need support, like a slicer's support preview:
 
 The design is not modified: these are custom graphics, they don't go into the timeline and they disappear when the dialog is closed.
 
-It is in **DESIGN > INSPECT > FDM overhangs**.
+It is in **DESIGN > INSPECT > FDM overhangs**. The same panel has a second button, [Wall thickness](#wall-thickness), which paints the wall thickness.
 
 ![Overhangs at 45°](img/ejemplo.png)
 
@@ -34,6 +34,33 @@ A real part seen from below and cut with a section analysis, with the limit at 3
 **Result** shows the overhang area (total, percentage of the surface and per body), the angle of the worst overhang and the area on the bed, with a warning if nothing rests flat on it.
 
 Faces exactly at the limit (a teardrop or a chamfer at exactly 45° with the limit at 45°) are not marked: there is a half-degree margin.
+
+## Wall thickness
+
+Second button, in **DESIGN > INSPECT > Wall thickness**. Paints the wall thickness from red (thin) to blue (thick), or only what is below the minimum thickness, and gives the thinnest point of each body.
+
+![Wall thickness](img/espesor.png)
+
+Test part with the scale from 0 to 4 mm: fins from 0.4 to 3.2 mm (orange to light blue), a wedge fin from 2.0 to 0.4 mm and a tube with a 0.8 wall; the 3.2 and 4 mm bases are light blue and blue.
+
+| Field | What it does |
+|---|---|
+| Bodies | *All visible* or *Selected*. Surfaces are not measured: they have no thickness |
+| Minimum thickness | What is below it is counted in the result (area and ✖). For example 0.8 mm, two lines of a 0.4 nozzle |
+| Paint | *Colour map* or *Only what is below the minimum* (in red) |
+| Scale from / to | Thicknesses of the red and the blue in the colour map |
+| Resolution | Maximum side of the triangles used to measure: *Fast (2 mm)*, *Normal (1 mm)* or *Fine (0.5 mm)* |
+| Keep when closed | The layer stays after closing the dialog until one of the bodies changes; then it is removed and the dialog has to be opened again (it cannot be recomputed outside the dialog). It is not saved in the file |
+
+**Result** shows the thinnest point (and its body), the area below the minimum thickness and, with several bodies, both values for each.
+
+**How it measures:** from the centre of each triangle it casts a ray inwards, perpendicular to the surface, up to the opposite wall. Fusion only casts rays against mesh bodies, so for solids it creates a temporary one inside the preview and deletes it at once: nothing is left in the design or the timeline. It does not use the API's `PolygonMesh.wallThickness`: it measures per node and gives almost 0 on curved edges (0.03 mm on the rim of a 0.8 tube).
+
+**Limits:**
+
+- The ray cast from the edge face of a wall runs along it, not across it. To correct it, each triangle takes the thinnest value of those it touches along a convex edge, so the edge of a 0.4 fin comes out as 0.4. On wide edge faces, several rows of triangles across, only the first row is corrected: the middle can come out thicker than it is.
+- Curved walls measure a little less because of the mesh (0.79 on a 0.8 tube).
+- Engraved or embossed text has very thin ridges between strokes and comes out as the thinnest part of the piece. That is real: they do not print well with a 0.4 nozzle.
 
 ## Installation
 
