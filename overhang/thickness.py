@@ -303,6 +303,25 @@ def classify_other(hits, back, closed=True):
     return (CONTACT, 0.0) if d <= back else (GAP, d)
 
 
+def retry_origins(coords, indices, t):
+    """Dos puntos del triángulo t, a medio camino entre su centro y dos de sus vértices, para repetir un rayo."""
+    (a, b, d), _, _ = _tri(coords, indices, 3 * t)
+    c = coords
+    center = [(c[a + i] + c[b + i] + c[d + i]) / 3.0 for i in range(3)]
+    return [tuple((center[i] + c[v + i]) / 2.0 for i in range(3)) for v in (a, b)]
+
+
+def settle_overlap(retries):
+    """Decide un solape dudoso con el resultado de classify_other en los dos rayos repetidos. El rayo de Fusion
+    puede perder un choque si roza una arista de la malla (con 2 choques reales devuelve 1, medido en una holgura
+    de 0,15), y un número impar parecería un solape. Es de verdad si lo repite alguno de los dos (2 de 3); si no,
+    vale lo que ha medido el primero."""
+    for kind, dist in retries:
+        if kind == OVERLAP:
+            return OVERLAP, 0.0
+    return retries[0]
+
+
 def combine(own, others):
     """Resultado de un triángulo: (tipo, espacio o NO_HIT, cuerpo de enfrente o -1 si es el suyo).
     own es la distancia a su propio cuerpo o None; others, (tipo, distancia o None, cuerpo) de los demás.

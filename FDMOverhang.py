@@ -655,6 +655,13 @@ def _gap_measure(design, bodies, res):
     busy = _Busy(len(meshes))
     objs = _temp_meshes(design, [(m[0], m[2]) for m in meshes])
     results = []
+
+    def other_body(j, point, direction, vec):
+        back = P(point[0] - GAP_BACK * direction[0], point[1] - GAP_BACK * direction[1],
+                 point[2] - GAP_BACK * direction[2])
+        hits = [back.distanceTo(h) for h in objs[j].calculateCollisionsWithRay(back, vec)]
+        return T.classify_other(hits, GAP_BACK, meshes[j][3])
+
     try:
         for i, m in enumerate(meshes):
             vals, kinds, who = [], [], []
@@ -676,11 +683,12 @@ def _gap_measure(design, bodies, res):
                         break
                 others = []
                 p = (o[0] - GAP_BACK * d[0], o[1] - GAP_BACK * d[1], o[2] - GAP_BACK * d[2])
-                back = P(*p)
                 for j in range(len(meshes)):
                     if j != i and T.ray_box(p, d, *boxes[j]):
-                        hits = [back.distanceTo(h) for h in objs[j].calculateCollisionsWithRay(back, vec)]
-                        kind, dist = T.classify_other(hits, GAP_BACK, meshes[j][3])
+                        kind, dist = other_body(j, o, d, vec)
+                        if kind == T.OVERLAP:
+                            kind, dist = T.settle_overlap([other_body(j, q, d, vec)
+                                                           for q in T.retry_origins(m[0], m[2], len(vals))])
                         others.append((kind, dist, j))
                 kind, dist, j = T.combine(own, others)
                 vals.append(dist), kinds.append(kind), who.append(j)
@@ -903,7 +911,7 @@ class _ThCreatedHandler(adsk.core.CommandCreatedEventHandler):
             keep = inputs.addBoolValueInput('th_keep', tr('Mantener al cerrar'), True, '', bool(s['th_keep']))
             keep.tooltip = tr('La capa se queda al cerrar el diálogo, hasta que cambie alguno de los cuerpos: '
                               'entonces se quita y hay que volver a abrir el diálogo. No se guarda en el archivo.')
-            inputs.addTextBoxCommandInput('th_info', tr('Resultado'), '', 9, True).isFullWidth = True
+            inputs.addTextBoxCommandInput('th_info', tr('Resultado'), '', 13, True).isFullWidth = True
             _th_update_visibility(inputs)
 
             for ev, h in ((cmd.executePreview, _ThPreviewHandler()), (cmd.inputChanged, _ThChangedHandler()),

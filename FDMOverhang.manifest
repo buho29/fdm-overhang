@@ -6,7 +6,7 @@
   "description": {
     "": "Paints overhangs and bridges like a slicer, and maps wall thickness and gaps between surfaces. / Pinta los voladizos y puentes como un laminador, y hace un mapa del espesor de pared y del espacio entre superficies."
   },
-  "version": "1.1.0",
+  "version": "1.1.1",
   "runOnStartup": true,
   "supportedOS": "windows|mac",
   "editEnabled": true

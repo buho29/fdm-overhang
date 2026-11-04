@@ -247,6 +247,35 @@ class GapTest(unittest.TestCase):
         oc, _, col, _ = T.colorize_gaps(c, n, idx, [0.5, 3.0], [T.GAP, T.GAP], 0.0, 4.0, 1.0, only_thin=True)
         self.assertEqual((len(oc), col[:4]), (9, list(T.THIN)))
 
+    def test_retry_origins_stay_inside_the_triangle(self):
+        c, _, idx = square()
+        for t in (0, 1):
+            ids = idx[3 * t:3 * t + 3]
+            x = [c[3 * k] for k in ids]
+            y = [c[3 * k + 1] for k in ids]
+            points = T.retry_origins(c, idx, t)
+            self.assertEqual(len(points), 2)
+            self.assertNotEqual(points[0], points[1])
+            for px, py, pz in points:
+                self.assertTrue(min(x) < px < max(x) and min(y) < py < max(y))
+                self.assertEqual(pz, 0.0)
+
+    def test_missed_hit_is_not_an_overlap(self):
+        # el caso real: holgura de 0,15; Fusion pierde el primer choque (1 de 2) porque el rayo roza una arista
+        back = 0.001
+        first = T.classify_other([1.907], back)
+        self.assertEqual(first, (T.OVERLAP, 0.0))
+        retries = [T.classify_other(h, back) for h in ([1.537, 1.907], [1.538, 1.908])]
+        kind, dist = T.settle_overlap(retries)
+        self.assertEqual(kind, T.GAP)
+        self.assertAlmostEqual(dist, 1.536)
+
+    def test_real_overlap_survives_the_retry(self):
+        back = 0.001
+        self.assertEqual(T.settle_overlap([(T.OVERLAP, 0.0), (T.OVERLAP, 0.0)]), (T.OVERLAP, 0.0))
+        # en el borde del solape, un punto puede quedar fuera: 2 de 3 siguen contando
+        self.assertEqual(T.settle_overlap([T.classify_other([], back), (T.OVERLAP, 0.0)]), (T.OVERLAP, 0.0))
+
     def test_contact_is_painted_in_any_paint_mode(self):
         c, n, idx = square()
         for only_thin in (False, True):
