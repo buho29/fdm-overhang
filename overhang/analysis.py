@@ -10,6 +10,7 @@ BRIDGE_COLOR = (40, 110, 230, 255)   # puente que no pasa del máximo
 MARGIN_DEG = 0.5   # gotas y chaflanes justo en el límite son correctos: no se marcan
 BRIDGE_LINES = 15      # líneas con las que se recorre un techo plano en cada dirección
 BRIDGE_DIR_STEP = 5.0  # grados: dos direcciones más parecidas que esto se prueban una sola vez
+BRIDGE_ACROSS = 0.25   # parte de las líneas que puede acabar de través en un borde libre (esquinas curvas)
 
 
 def transform(coords, normals, m):
@@ -60,31 +61,80 @@ def lift(tol_analysis, tol_display):
     return 1.1 * max(tol_analysis, tol_display) + 1e-3
 
 
+def lift_layer(coords, normals, tol_display, limit=None):
+    """Separa la capa de la superficie sin usar la tolerancia de la malla para todo (A.lift): con una malla basta
+    llega a medio milímetro y las caras planas se verían despegadas.
+    coords y normals llevan tres vértices propios por triángulo, como los devuelve classify.
+
+    Un triángulo plano ya está sobre la superficie y sobre la malla de Fusion: casi no hace falta separarlo. En uno
+    curvo, la cuerda de un arco se aparta de él L/2·tan(θ/4), con θ el giro de la normal a lo largo de la arista y
+    L solo lo que la arista avanza en el sentido de la curva (en un cilindro, sin lo que recorre a lo largo del eje).
+    Todos los curvos se separan lo mismo, lo que pida el peor, porque si no se abren grietas entre vecinos, y nunca
+    más de limit: la separación que garantiza la tolerancia de la malla (A.lift)."""
+    tris, worst = [], 0.0
+    for t in range(0, len(coords) - 8, 9):
+        p = [coords[t + k:t + k + 3] for k in (0, 3, 6)]
+        n = [unit(normals[t + k:t + k + 3]) for k in (0, 3, 6)]
+        sag = 0.0
+        for i, j in ((0, 1), (1, 2), (2, 0)):
+            a, b = n[i], n[j]
+            cx, cy, cz = a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]
+            turn = math.atan2(math.sqrt(cx * cx + cy * cy + cz * cz), a[0] * b[0] + a[1] * b[1] + a[2] * b[2])
+            if turn > 1e-6:
+                ux, uy, uz = unit((cx, cy, cz))   # eje de giro de la normal
+                ex, ey, ez = p[j][0] - p[i][0], p[j][1] - p[i][1], p[j][2] - p[i][2]
+                along = ex * ux + ey * uy + ez * uz
+                length = math.sqrt(max(0.0, ex * ex + ey * ey + ez * ez - along * along))
+                sag = max(sag, length / 2 * math.tan(turn / 4))
+        worst = max(worst, sag)
+        tris.append((p, n, sag > 0))
+    flat, curved = lift(0.0, 0.0), lift(worst, tol_display)
+    if limit is not None:
+        curved = min(curved, limit)
+    out = []
+    for p, n, is_curved in tris:
+        d = curved if is_curved else flat
+        for v, m in zip(p, n):
+            out += [v[0] + m[0] * d, v[1] + m[1] * d, v[2] + m[2] * d]
+    return out
+
+
 def _mix(a, b, t):
     return tuple(int(round(a[k] + (b[k] - a[k]) * t)) for k in range(4))
 
 
 def _span_along(edges, dx, dy):
-    """Luz de un techo plano tendido en la dirección (dx, dy): el tramo más largo entre dos bordes, o None si
-    alguna línea acaba en un borde sin apoyo. edges = [(ax, ay, bx, by, apoyado)] en el plano del techo."""
+    """Luz de un techo plano tendido en la dirección (dx, dy): el tramo más largo entre dos bordes apoyados, o
+    None si no se sostiene así. Una ventana en una pared curva tiene el extremo libre curvo y hay líneas que
+    acaban en él: se admite si al menos la mitad de los tramos va de pared a pared y como mucho BRIDGE_ACROSS
+    acaba en un borde libre que le queda de través, más a lo ancho que a lo largo de la línea.
+    edges = [(ax, ay, bx, by, apoyado)] en el plano del techo."""
     proj = [(dx * ay - dy * ax, dx * ax + dy * ay, dx * by - dy * bx, dx * bx + dy * by, ok)
             for ax, ay, bx, by, ok in edges]
     lo = min(min(e[0], e[2]) for e in proj)
     hi = max(max(e[0], e[2]) for e in proj)
     span = None
+    held = loose = across = 0
     for i in range(BRIDGE_LINES):
         s = lo + (hi - lo) * (i + 0.5) / BRIDGE_LINES
         hits = []
         for s1, t1, s2, t2, ok in proj:
             if (s1 <= s) != (s2 <= s):
-                hits.append((t1 + (t2 - t1) * (s - s1) / (s2 - s1), ok))
+                hits.append((t1 + (t2 - t1) * (s - s1) / (s2 - s1), ok, abs(s2 - s1) >= abs(t2 - t1)))
         hits.sort(key=lambda h: h[0])
         if len(hits) % 2:
             return None
         for k in range(0, len(hits), 2):
-            if not (hits[k][1] and hits[k + 1][1]):
-                return None
-            span = max(span or 0.0, hits[k + 1][0] - hits[k][0])
+            a, b = hits[k], hits[k + 1]
+            if a[1] and b[1]:
+                held += 1
+                span = max(span or 0.0, b[0] - a[0])
+            else:
+                loose += 1
+                if (not a[1] and a[2]) or (not b[1] and b[2]):
+                    across += 1
+    if held < loose or across > BRIDGE_ACROSS * (held + loose):
+        return None
     return span
 
 

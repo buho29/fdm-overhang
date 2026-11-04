@@ -245,7 +245,39 @@ class BridgeTest(unittest.TestCase):
         c, idx = quads(roof, jamb1, jamb2)
         st = A.classify(c, [], idx, UP, 0.0, 45, bridge_max=23.0)[3]
         self.assertGreater(st['bridge'], 0.0)
-        self.assertAlmostEqual(st['span'], 4.0)
+        self.assertAlmostEqual(st['span'], 4.0 * 10 / math.hypot(6, 10))   # perpendicular a las paredes
+
+    def test_window_in_a_curved_wall(self):
+        # el extremo libre del techo va en diagonal: las líneas de esa zona acaban en él
+        z = 5.0
+        roof = [[0, 0, z], [0, 20, z], [10, 16, z], [10, 4, z]]
+        c, idx = quads(roof, wall_below('x0', 0, 10, 0, 20, z), wall_below('x1', 0, 10, 4, 16, z))
+        st = A.classify(c, [], idx, UP, 0.0, 45, bridge_max=23.0)[3]
+        self.assertAlmostEqual(st['bridge'], 160.0)
+        self.assertAlmostEqual(st['span'], 10.0)
+
+    def test_wall_opposite_only_part_of_the_way_is_not_a_bridge(self):
+        # el 40 % del techo llega a un borde libre de través: es un voladizo aunque casi todo lo demás apoye
+        z = 5.0
+        coords = []
+        for x, y in ((0, 0), (0, 20), (10, 20), (10, 12), (10, 0)):
+            coords += [float(x), float(y), z]
+        idx = [0, 1, 2, 0, 2, 3, 0, 3, 4]
+        c, i = join((coords, idx), quads(wall_below('x0', 0, 10, 0, 20, z), wall_below('x1', 0, 10, 0, 12, z)))
+        self.assertEqual(A.classify(c, [], i, UP, 0.0, 45, bridge_max=23.0)[3]['bridge'], 0.0)
+
+    def test_triangular_balcony_is_not_a_bridge(self):
+        # pared por un lado y dos bordes libres en diagonal: ninguna línea llega a otra pared
+        z = 5.0
+        c, idx = quads([[0, 0, z], [0, 20, z], [10, 10, z], [10, 10, z]], wall_below('x0', 0, 10, 0, 20, z))
+        self.assertEqual(A.classify(c, [], idx, UP, 0.0, 45, bridge_max=23.0)[3]['bridge'], 0.0)
+
+    def test_short_wall_opposite_a_long_one_is_not_a_bridge(self):
+        # la pared de enfrente solo sostiene la cuarta parte: el resto queda en el aire
+        z = 5.0
+        roof = [[0, 0, z], [0, 20, z], [10, 12.5, z], [10, 7.5, z]]
+        c, idx = quads(roof, wall_below('x0', 0, 10, 0, 20, z), wall_below('x1', 0, 10, 7.5, 12.5, z))
+        self.assertEqual(A.classify(c, [], idx, UP, 0.0, 45, bridge_max=23.0)[3]['bridge'], 0.0)
 
 
 class OffsetTest(unittest.TestCase):
@@ -253,6 +285,58 @@ class OffsetTest(unittest.TestCase):
         out = A.offset([1.0, 2.0, 3.0, 0.0, 0.0, 0.0], [0.0, 0.0, 2.0, 3.0, 4.0, 0.0], 0.5)
         for got, want in zip(out, [1.0, 2.0, 3.5, 0.3, 0.4, 0.0]):
             self.assertAlmostEqual(got, want)
+
+    def test_flat_triangle_barely_moves_with_a_coarse_display(self):
+        c = [0.0, 0.0, 5.0, 4.0, 0.0, 5.0, 0.0, 4.0, 5.0]
+        out = A.lift_layer(c, [0.0, 0.0, -1.0] * 3, 0.05)
+        for k in (2, 5, 8):
+            self.assertAlmostEqual(out[k], 5.0 - A.lift(0.0, 0.0))
+
+    def test_curved_triangle_moves_past_its_real_chord_gap(self):
+        # cuerda de 90° en un círculo de radio 2: se aparta 2·(1 - cos 45°) en el centro, 0,586
+        r2 = math.sqrt(0.5)
+        c = [2.0, 0.0, 0.0, 0.0, 2.0, 0.0, 2.0, 0.0, 1.0]
+        n = [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 1.0, 0.0, 0.0]
+        out = A.lift_layer(c, n, 0.001)
+        moved = out[0] - c[0]
+        self.assertGreater(moved, 2 * (1 - r2))
+        self.assertLess(moved, 1.2 * 2 * (1 - r2))
+        self.assertAlmostEqual(out[4] - c[4], moved)
+
+    def test_long_diagonal_of_a_cylinder_does_not_count_along_the_axis(self):
+        # triángulo largo en un cilindro de radio 1, con cuerdas de 30°: lo que se aparta no depende del largo
+        a = math.radians(30)
+        ca, sa = math.cos(a), math.sin(a)
+        short = A.lift_layer([1.0, 0, 0, ca, sa, 0, 1.0, 0, 1.0], [1.0, 0, 0, ca, sa, 0, 1.0, 0, 0], 0.001)
+        long_ = A.lift_layer([1.0, 0, 0, ca, sa, 100.0, 1.0, 0, 200.0], [1.0, 0, 0, ca, sa, 0, 1.0, 0, 0], 0.001)
+        self.assertAlmostEqual(short[0], long_[0])
+        self.assertLess(long_[0] - 1.0, 1.2 * (1 - math.cos(a / 2)) + 0.002)
+
+    def test_limit_caps_the_lift_of_curved_triangles(self):
+        n = [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 1.0, 0.0, 0.0]
+        out = A.lift_layer([2.0, 0.0, 0.0, 0.0, 2.0, 0.0, 2.0, 0.0, 1.0], n, 0.001, limit=0.1)
+        self.assertAlmostEqual(out[0], 2.1)
+
+    def test_curved_neighbours_move_the_same_so_no_cracks_open(self):
+        # dos triángulos curvos de distinto tamaño y uno plano
+        n1 = A.unit((1.0, 0.1, 0.0))
+        n2 = A.unit((1.0, 0.4, 0.0))
+        c = [0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0,
+             0.0, 0.0, 0.0, 0.0, 9.0, 0.0, 0.0, 0.0, 1.0,
+             5.0, 0.0, 0.0, 5.0, 1.0, 0.0, 5.0, 0.0, 1.0]
+        n = [1.0, 0.0, 0.0] + list(n1) + [1.0, 0.0, 0.0] + [1.0, 0.0, 0.0] + list(n2) + [1.0, 0.0, 0.0] + [1.0, 0.0, 0.0] * 3
+        out = A.lift_layer(c, n, 0.001)
+        self.assertAlmostEqual(out[0], out[9])
+        self.assertGreater(out[0], 0.1)
+        self.assertAlmostEqual(out[18] - 5.0, A.lift(0.0, 0.0))
+
+    def test_curved_triangle_clears_the_display_mesh(self):
+        # curva casi nada, pero la malla de Fusion puede quedar más afuera: manda su tolerancia
+        n1 = A.unit((1.0, 0.01, 0.0))
+        c = [0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0]
+        n = [1.0, 0.0, 0.0] + list(n1) + [1.0, 0.0, 0.0]
+        out = A.lift_layer(c, n, 0.05)
+        self.assertGreater(out[0], 0.05)
 
     def test_lift_covers_coarser_mesh(self):
         self.assertGreater(A.lift(0.07, 0.009), 0.07)

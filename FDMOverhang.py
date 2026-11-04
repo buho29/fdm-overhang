@@ -140,24 +140,26 @@ def _display_tolerance(native):
 
 
 def _mesh(body, quality):
-    """(coords, normales, índices, separación) del cuerpo en coordenadas del raíz (cm), guardada mientras dure
-    el diálogo. La separación es lo que hay que apartar la capa para que se vea entera (ver A.lift)."""
+    """(coords, normales, índices, separación, tolerancia de pantalla) del cuerpo en coordenadas del raíz (cm),
+    guardada mientras dure el diálogo. La separación es el peor caso de lo que se apartan las dos mallas (A.lift);
+    la tolerancia de pantalla es None si se pinta la misma malla que se analiza."""
     key = (body.entityToken, quality)
     if key not in _meshes:
         native = body.nativeObject or body
         mesh_body = adsk.fusion.MeshBody.cast(native)
         if mesh_body:
             m = mesh_body.displayMesh
-            gap = A.lift(0.0, 0.0)   # se pinta la misma malla que se analiza
+            gap, shown = A.lift(0.0, 0.0), None   # se pinta la misma malla que se analiza
         else:
             calc = native.meshManager.createMeshCalculator()
             calc.setQuality(dict((k, q) for k, _, q in QUALITIES)[quality])
             m = calc.calculate()
-            gap = A.lift(calc.surfaceTolerance, _display_tolerance(native))
+            shown = _display_tolerance(native)
+            gap = A.lift(calc.surfaceTolerance, shown)
         coords, normals = list(m.nodeCoordinatesAsDouble), list(m.normalVectorsAsDouble)
         if body.assemblyContext:
             coords, normals = A.transform(coords, normals, body.assemblyContext.transform2.asArray())
-        _meshes[key] = (coords, normals, list(m.nodeIndices), gap)
+        _meshes[key] = (coords, normals, list(m.nodeIndices), gap, shown)
     return _meshes[key]
 
 
@@ -278,13 +280,13 @@ def _analyse(design, s, picked, face):
 
     t0 = time.time()
     meshes = [(b, _mesh(b, s['quality'])) for b in bodies]
-    lows = [A.lowest(c, up) for _, (c, _, _, _) in meshes]
+    lows = [A.lowest(c, up) for _, (c, _, _, _, _) in meshes]
     bed = min(lows)
 
     total = over = on_bed = bridge = 0.0
     worst, span, long_span, tris, rows, layers = None, None, None, 0, [], []
     bridge_max = s['bridge_max'] / 10.0 if s['bridge'] else None   # cm
-    for (b, (c, n, idx, gap)), low in zip(meshes, lows):
+    for (b, (c, n, idx, gap, shown)), low in zip(meshes, lows):
         tc, tn, tcol, st = A.classify(c, n, idx, up, low if s['own_bed'] else bed, s['angle'], s['gradient'], TOL_CM,
                                       bridge_max, gap)
         tris += len(idx) // 3
@@ -296,7 +298,7 @@ def _analyse(design, s, picked, face):
             worst = st['worst'] if worst is None else min(worst, st['worst'])
             rows.append((st['overhang'], b.name))
         if tc:
-            layers.append((A.offset(tc, tn, gap), tn, tcol))
+            layers.append((A.lift_layer(tc, tn, shown, gap) if shown is not None else A.offset(tc, tn, gap), tn, tcol))
 
     lines = [_legend(s), '']
     if over:

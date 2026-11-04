@@ -38,7 +38,7 @@ A real part seen from below and cut with a section analysis, with the limit at 3
 
 Faces exactly at the limit (a teardrop or a chamfer at exactly 45° with the limit at 45°) are not marked: there is a half-degree margin.
 
-**What counts as a bridge:** a horizontal ceiling whose lines, in some direction, all go from one wall to another; the span is the longest stretch in the shortest direction. A ceiling supported on a single side or on two adjacent sides, or the top of a T, stays red. Arched or tilted ceilings do not count either, nor does a support that is itself an overhang or part of another body.
+**What counts as a bridge:** a horizontal ceiling whose lines, in some direction, go from one wall to another; the span is the longest stretch in the shortest direction. Some of them may end at a free edge, like at the end of a window in a curved wall: at least half must go from wall to wall. A ceiling supported on a single side or on two adjacent sides, or the top of a T, stays red. Arched or tilted ceilings do not count either, nor does a support that is itself an overhang or part of another body.
 
 ## Thickness and gaps
 

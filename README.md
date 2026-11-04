@@ -38,7 +38,7 @@ En **Resultado** salen el área en voladizo (total, porcentaje de la superficie 
 
 Lo que está justo en el límite (una gota o un chaflán a 45° exactos con el límite en 45°) no se marca: hay medio grado de margen.
 
-**Qué cuenta como puente:** un techo horizontal cuyas líneas, en alguna dirección, van todas de una pared a otra; la luz es el tramo más largo en la dirección más corta. Un techo apoyado por un solo lado o por dos lados contiguos, o el tablero de una T, sigue en rojo. Tampoco cuentan los techos en arco o inclinados, ni un apoyo que sea a su vez voladizo o de otro cuerpo.
+**Qué cuenta como puente:** un techo horizontal cuyas líneas, en alguna dirección, van de una pared a otra; la luz es el tramo más largo en la dirección más corta. Se admite que algunas acaben en un borde libre, como en el extremo de una ventana en una pared curva: tiene que haber al menos la mitad de pared a pared. Un techo apoyado por un solo lado o por dos lados contiguos, o el tablero de una T, sigue en rojo. Tampoco cuentan los techos en arco o inclinados, ni un apoyo que sea a su vez voladizo o de otro cuerpo.
 
 ## Espesor y espacios
 
