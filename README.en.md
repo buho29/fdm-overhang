@@ -20,6 +20,10 @@ Test parts seen from below with the limit at 45°: the top of the T is a flat ce
 
 A real part seen from below and cut with a section analysis, with the limit at 30° and *High* mesh quality: the inner vault is orange and the rim resting on the bed is green. The dialog gives the overhang area, the worst angle and the area on the bed.
 
+![Bridges on a phone stand](img/puentes.png)
+
+A phone stand seen from below: the two bridges up to 23 mm are blue; the 30 mm one stays red and the result warns about it. What rests on the bed is green.
+
 ## Dialog
 
 | Field | What it does |
@@ -46,7 +50,7 @@ Second button, in **DESIGN > INSPECT > Thickness and gaps**. Paints the wall thi
 
 ![Thickness](img/espesor.png)
 
-Test part with the scale from 0 to 4 mm: fins from 0.4 to 3.2 mm (orange to light blue), a wedge fin from 2.0 to 0.4 mm and a tube with a 0.8 wall; the 3.2 and 4 mm bases are light blue and blue.
+The phone stand with the scale from 0 to 4 mm and **See through**: the curved wall goes from blue to green as it thins towards the top, and the wedge tips of the base reach orange. The thinnest point, 0.19 mm, is in the cradle.
 
 | Field | What it does |
 |---|---|
@@ -75,7 +79,11 @@ With **Measure: Gap**, the ray goes outwards and measures the air up to whatever
 
 ![Gaps between surfaces](img/espacios.png)
 
-With **See through** and the scale from 0 to 2 mm: the lid lip 0.1 mm from the wall and the shaft at 0.15 mm, in reddish orange; the 0.25 slot and the hinge pin at 0.3, in orange; a stud going 0.2 mm into the wall, in magenta.
+With **See through** and the scale from 0 to 2 mm: the lid lip 0.1 mm from the wall and the shaft at 0.15 mm, in reddish orange; the 0.25 slot and the hinge pin at 0.3, in orange; a stud going 0.2 mm into the wall, in magenta; the faces where the lid rests on the box, in white.
+
+![Gap between a worm and its wheel](img/sinfin.png)
+
+A worm and its wheel, generated with [WormGear](https://github.com/buho29/wormgear), in their working position: the air between the flanks closes from blue to red on the meshing teeth.
 
 - Only what fits in the scale is painted. Faces with nothing in front of them or further away are not painted, although the result still gives the minimum.
 - Faces that touch (up to 0.01 mm) are white and are given as the area in contact. They are usually inside, so they are easier to see with **See through**. The border follows the triangles: it is cleaner at a finer resolution.

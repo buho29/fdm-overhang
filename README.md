@@ -20,6 +20,10 @@ Piezas de prueba vistas desde abajo con el límite en 45°: el tablero de la T e
 
 Una pieza real vista desde abajo y cortada con un análisis de sección, con el límite en 30° y la malla en calidad *Alta*: la bóveda interior sale en naranja y el borde que apoya en la cama, en verde. El diálogo da el área en voladizo, el peor ángulo y el área de apoyo.
 
+![Puentes en un soporte de móvil](img/puentes.png)
+
+Un soporte de móvil visto desde abajo: los dos puentes que no pasan de 23 mm salen en azul; el de 30 mm sigue en rojo y el resultado avisa. Lo que apoya en la cama, en verde.
+
 ## Diálogo
 
 | Campo | Qué hace |
@@ -46,7 +50,7 @@ Segundo botón, en **DISEÑO > INSPECCIONAR > Espesor y espacios**. Pinta el esp
 
 ![Espesor](img/espesor.png)
 
-Pieza de prueba con la escala de 0 a 4 mm: aletas de 0,4 a 3,2 mm (de naranja a azul claro), una aleta en cuña de 2,0 a 0,4 mm y un tubo de pared 0,8; las bases, de 3,2 y 4 mm, salen en azul claro y azul.
+El soporte de móvil con la escala de 0 a 4 mm y **Ver a través**: la pared curva pasa de azul a verde según se adelgaza hacia arriba y las puntas en cuña de la base llegan a naranja. Lo más fino, 0,19 mm, está en la cuna.
 
 | Campo | Qué hace |
 |---|---|
@@ -75,7 +79,11 @@ Con **Medir: Espacio**, el rayo sale hacia fuera y mide el aire hasta lo que cad
 
 ![Espacios entre superficies](img/espacios.png)
 
-Con **Ver a través** y la escala de 0 a 2 mm: el reborde de la tapa a 0,1 mm de la pared y el eje a 0,15 mm, en rojo anaranjado; la ranura de 0,25 y el pasador de la bisagra a 0,3, en naranja; un tetón metido 0,2 mm en la pared, en magenta.
+Con **Ver a través** y la escala de 0 a 2 mm: el reborde de la tapa a 0,1 mm de la pared y el eje a 0,15 mm, en rojo anaranjado; la ranura de 0,25 y el pasador de la bisagra a 0,3, en naranja; un tetón metido 0,2 mm en la pared, en magenta; las caras donde la tapa apoya en la caja, en blanco.
+
+![Espacio entre un sinfín y su rueda](img/sinfin.png)
+
+Un sinfín y su rueda, generados con [WormGear](https://github.com/buho29/wormgear), en su posición de trabajo: el aire entre los flancos se cierra de azul a rojo en los dientes que engranan.
 
 - Solo se pinta lo que entra en la escala. Lo que no tiene nada delante o queda más lejos no se pinta, aunque el resultado da el mínimo igualmente.
 - Las caras que se tocan (hasta 0,01 mm) salen en blanco y se dan como área en contacto. Suelen quedar por dentro, así que se ven mejor con **Ver a través**. El borde va por triángulos: sale más limpio con una resolución más fina.
