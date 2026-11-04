@@ -5,6 +5,7 @@
 Pinta encima del modelo lo que va a necesitar soporte, como la vista de soportes de un laminador:
 
 - **rojo → naranja**: lo que mira hacia abajo con menos del ángulo límite desde la horizontal. El rojo puro es un techo plano y el naranja está justo por debajo del límite;
+- **azul**: los puentes, techos planos tendidos entre dos paredes que no pasan del máximo;
 - **verde**: lo que apoya en la cama.
 
 No modifica el diseño: son gráficos personalizados, no entran en la línea de tiempo y desaparecen al cerrar el diálogo.
@@ -28,12 +29,16 @@ Una pieza real vista desde abajo y cortada con un análisis de sección, con el 
 | Cada cuerpo sobre la cama | Cada cuerpo se apoya en su punto más bajo. Sin marcar, la cama es el punto más bajo de todos (útil para un conjunto montado) |
 | Ángulo límite (°) | Medido desde la horizontal, como en PrusaSlicer y Orca: 45° para la mayoría de materiales; 30° si la impresora y el material lo aguantan |
 | Degradado | Rojo → naranja según la inclinación; sin marcar, todo rojo |
+| Detectar puentes | Pinta en azul los techos planos tendidos entre paredes y descuenta su área del voladizo. Sin marcar, salen como voladizo |
+| Puente máximo | Luz a partir de la cual un puente vuelve a salir en rojo, con un aviso. Por defecto 23 mm |
 | Calidad de la malla | Teselado *Baja*, *Normal* o *Alta*. Las curvas se clasifican por triángulos: con más calidad, el borde de la zona marcada es más fino |
 | Mantener al cerrar | La capa se queda al cerrar el diálogo y se recalcula cada vez que termina un comando que pueda cambiar el modelo. Para quitarla, se vuelve a abrir el diálogo y se desmarca. Solo dura mientras el diseño está abierto: no se guarda en el archivo |
 
-En **Resultado** salen el área en voladizo (total, porcentaje de la superficie y por cuerpo), el ángulo del peor voladizo y el área apoyada en la cama, con un aviso si nada apoya en plano.
+En **Resultado** salen el área en voladizo (total, porcentaje de la superficie y por cuerpo), el ángulo del peor voladizo, el área y la luz más larga de los puentes y el área apoyada en la cama, con un aviso si nada apoya en plano.
 
 Lo que está justo en el límite (una gota o un chaflán a 45° exactos con el límite en 45°) no se marca: hay medio grado de margen.
+
+**Qué cuenta como puente:** un techo horizontal cuyas líneas, en alguna dirección, van todas de una pared a otra; la luz es el tramo más largo en la dirección más corta. Un techo apoyado por un solo lado o por dos lados contiguos, o el tablero de una T, sigue en rojo. Tampoco cuentan los techos en arco o inclinados, ni un apoyo que sea a su vez voladizo o de otro cuerpo.
 
 ## Espesor y espacios
 

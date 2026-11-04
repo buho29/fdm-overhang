@@ -5,6 +5,7 @@
 Paints over the model what will need support, like a slicer's support preview:
 
 - **red → orange**: faces pointing down at less than the limit angle from the horizontal. Pure red is a flat ceiling; orange is just below the limit;
+- **blue**: bridges, flat ceilings spanning two walls that are not over the maximum;
 - **green**: what rests on the bed.
 
 The design is not modified: these are custom graphics, they don't go into the timeline and they disappear when the dialog is closed.
@@ -28,12 +29,16 @@ A real part seen from below and cut with a section analysis, with the limit at 3
 | Each body on the bed | Each body rests on its own lowest point. Unchecked, the bed is the lowest point of all of them (useful for an assembly) |
 | Limit angle (°) | Measured from the horizontal, as in PrusaSlicer and Orca: 45° for most materials; 30° if the printer and material can handle it |
 | Gradient | Red → orange by inclination; unchecked, everything red |
+| Detect bridges | Paints flat ceilings spanning walls in blue and takes their area out of the overhang. Unchecked, they show as overhangs |
+| Maximum bridge | Span above which a bridge goes back to red, with a warning. 23 mm by default |
 | Mesh quality | *Low*, *Normal* or *High* tessellation. Curves are classified per triangle: higher quality gives a finer edge to the marked area |
 | Keep when closed | The layer stays after closing the dialog and is recomputed after every command that may change the model. To remove it, open the dialog again and uncheck this. It only lasts while the design is open: it is not saved in the file |
 
-**Result** shows the overhang area (total, percentage of the surface and per body), the angle of the worst overhang and the area on the bed, with a warning if nothing rests flat on it.
+**Result** shows the overhang area (total, percentage of the surface and per body), the angle of the worst overhang, the area and longest span of the bridges and the area on the bed, with a warning if nothing rests flat on it.
 
 Faces exactly at the limit (a teardrop or a chamfer at exactly 45° with the limit at 45°) are not marked: there is a half-degree margin.
+
+**What counts as a bridge:** a horizontal ceiling whose lines, in some direction, all go from one wall to another; the span is the longest stretch in the shortest direction. A ceiling supported on a single side or on two adjacent sides, or the top of a T, stays red. Arched or tilted ceilings do not count either, nor does a support that is itself an overhang or part of another body.
 
 ## Thickness and gaps
 

@@ -3,8 +3,8 @@ Voladizos FDM (FDMOverhang) - complemento de Fusion 360
 
 Pinta encima del modelo lo que va a necesitar soporte, como la vista de
 soportes de un laminador: en rojo y naranja lo que mira hacia abajo con
-menos del ángulo límite desde la horizontal, y en verde lo que apoya en la
-cama. No modifica el diseño.
+menos del ángulo límite desde la horizontal, en azul los puentes y en verde
+lo que apoya en la cama. No modifica el diseño.
 
 Instalar (Windows)
 ------------------

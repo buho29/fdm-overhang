@@ -19,9 +19,10 @@ EN = {
     # ------------------------------------------------ nombres y diálogo
     'Voladizos FDM': 'FDM overhangs',
     'Pinta como un laminador lo que necesitará soporte: en rojo lo que mira hacia abajo con menos del '
-    'ángulo límite desde la horizontal y en verde lo que apoya en la cama. No modifica el diseño.':
+    'ángulo límite desde la horizontal, en azul los puentes y en verde lo que apoya en la cama. '
+    'No modifica el diseño.':
         'Paints what will need support, like a slicer: overhangs below the limit angle from the horizontal '
-        'in red and what rests on the bed in green. The design is not modified.',
+        'in red, bridges in blue and what rests on the bed in green. The design is not modified.',
     'Cerrar': 'Close',
     'Cuerpos': 'Bodies',
     'Todos los visibles': 'All visible',
@@ -35,6 +36,15 @@ EN = {
     'Cada cuerpo sobre la cama': 'Each body on the bed',
     'Ángulo límite (°)': 'Limit angle (°)',
     'Degradado': 'Gradient',
+    'Detectar puentes': 'Detect bridges',
+    'Pinta en otro color los techos planos tendidos entre dos paredes, que se imprimen sin '
+    'soporte si no son muy largos. Sin marcar, salen como voladizo.':
+        'Paints flat ceilings spanning two walls in another color: they print without support if they are '
+        'not too long. Unchecked, they show as overhangs.',
+    'Puente máximo': 'Maximum bridge',
+    'puente (hasta %s mm)': 'bridge (up to %s mm)',
+    'Puentes: <b>%.0f mm²</b>, el más largo %s mm': 'Bridges: <b>%.0f mm²</b>, the longest %s mm',
+    'Puente de %s mm, más que el máximo: sigue en rojo.': '%s mm bridge, over the maximum: it stays red.',
     'Calidad de la malla': 'Mesh quality',
     'Baja': 'Low',
     'Normal': 'Normal',

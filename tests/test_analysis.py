@@ -74,6 +74,180 @@ class ClassifyTest(unittest.TestCase):
         self.assertEqual(nrm, [0, -1, 0])
 
 
+def quads(*faces):
+    """Malla en la que cada cuadrilátero tiene sus propios nodos, como las caras de Fusion."""
+    coords, idx = [], []
+    for face in faces:
+        base = len(coords) // 3
+        for p in face:
+            coords += p
+        idx += [base, base + 1, base + 2, base, base + 2, base + 3]
+    return coords, idx
+
+
+def ceiling(x0, x1, y0, y1, z):
+    return [[x0, y0, z], [x0, y1, z], [x1, y1, z], [x1, y0, z]]   # mira hacia abajo
+
+
+def wall_below(side, x0, x1, y0, y1, z, h=2.0):
+    """Cara que baja desde un borde del techo. Solo cuenta su geometría, no hacia dónde mira."""
+    a, b = {'x0': ((x0, y0), (x0, y1)), 'x1': ((x1, y0), (x1, y1)),
+            'y0': ((x0, y0), (x1, y0)), 'y1': ((x0, y1), (x1, y1))}[side]
+    return [[a[0], a[1], z], [a[0], a[1], z - h], [b[0], b[1], z - h], [b[0], b[1], z]]
+
+
+def wall_above(side, x0, x1, y0, y1, z, h=2.0):
+    return wall_below(side, x0, x1, y0, y1, z + h, h)
+
+
+def ring(z):
+    """Techo de 10 x 10 con un agujero de 2 x 2 en el centro, con los nodos compartidos."""
+    coords = []
+    for x, y in ((0, 0), (10, 0), (10, 10), (0, 10), (4, 4), (6, 4), (6, 6), (4, 6)):
+        coords += [float(x), float(y), z]
+    idx = []
+    for a, b, d, e in ((0, 4, 5, 1), (1, 5, 6, 2), (2, 6, 7, 3), (3, 7, 4, 0)):
+        idx += [a, b, d, a, d, e]
+    return coords, idx
+
+
+def join(first, second):
+    base = len(first[0]) // 3
+    return first[0] + second[0], first[1] + [i + base for i in second[1]]
+
+
+class BridgeTest(unittest.TestCase):
+    R = (3.0, 7.0, 0.0, 20.0, 5.0)   # techo de 4 x 20 a altura 5
+    SIDES = ('x0', 'x1', 'y0', 'y1')
+
+    def run_case(self, below, above, bridge_max=23.0):
+        r = self.R
+        c, idx = quads(ceiling(*r), *([wall_below(s, *r) for s in below] + [wall_above(s, *r) for s in above]))
+        return A.classify(c, [], idx, UP, 0.0, 45, bridge_max=bridge_max)
+
+    def test_window_between_two_walls(self):
+        out, _, cols, st = self.run_case(('x0', 'x1'), ('y0', 'y1'))
+        self.assertAlmostEqual(st['span'], 4.0)
+        self.assertAlmostEqual(st['bridge'], 80.0)
+        self.assertEqual(st['overhang'], 0.0)
+        self.assertEqual(tuple(cols[:4]), A.BRIDGE_COLOR)
+        self.assertEqual(len(out), 2 * 9)   # solo el techo: las paredes no se pintan
+
+    def test_too_long_stays_red(self):
+        _, _, cols, st = self.run_case(('x0', 'x1'), ('y0', 'y1'), bridge_max=3.0)
+        self.assertAlmostEqual(st['long_span'], 4.0)
+        self.assertIsNone(st['span'])
+        self.assertEqual(st['bridge'], 0.0)
+        self.assertAlmostEqual(st['overhang'], 80.0)
+        self.assertEqual(tuple(cols[:4]), A.RED)
+
+    def test_exact_maximum_is_a_bridge(self):
+        self.assertAlmostEqual(self.run_case(('x0', 'x1'), ('y0', 'y1'), bridge_max=4.0)[3]['span'], 4.0)
+
+    def test_disabled(self):
+        st = self.run_case(('x0', 'x1'), ('y0', 'y1'), bridge_max=None)[3]
+        self.assertEqual(st['bridge'], 0.0)
+        self.assertAlmostEqual(st['overhang'], 80.0)
+        self.assertIsNone(st['long_span'])
+
+    def test_one_side_is_a_balcony(self):
+        st = self.run_case(('x0',), ('x1', 'y0', 'y1'))[3]
+        self.assertEqual(st['bridge'], 0.0)
+        self.assertIsNone(st['long_span'])
+        self.assertAlmostEqual(st['overhang'], 80.0)
+
+    def test_two_adjacent_sides_are_not_a_bridge(self):
+        self.assertEqual(self.run_case(('x0', 'y0'), ('x1', 'y1'))[3]['bridge'], 0.0)
+
+    def test_closed_pocket_uses_shortest_direction(self):
+        self.assertAlmostEqual(self.run_case(self.SIDES, ())[3]['span'], 4.0)
+
+    def test_table_on_a_stem_is_not_a_bridge(self):
+        # las caras de la columna son opuestas, pero entre cada una y el borde del tablero solo hay aire
+        z = 5.0
+        c, idx = join(ring(z), quads(*([wall_below(s, 4, 6, 4, 6, z) for s in self.SIDES]
+                                       + [wall_above(s, 0, 10, 0, 10, z) for s in self.SIDES])))
+        st = A.classify(c, [], idx, UP, 0.0, 45, bridge_max=23.0)[3]
+        self.assertEqual(st['bridge'], 0.0)
+        self.assertAlmostEqual(st['overhang'], 96.0)
+
+    def test_pillar_in_a_closed_ceiling(self):
+        z = 5.0
+        c, idx = join(ring(z), quads(*([wall_below(s, 0, 10, 0, 10, z) for s in self.SIDES]
+                                       + [wall_below(s, 4, 6, 4, 6, z) for s in self.SIDES])))
+        st = A.classify(c, [], idx, UP, 0.0, 45, bridge_max=23.0)[3]
+        self.assertAlmostEqual(st['bridge'], 96.0)
+        self.assertAlmostEqual(st['span'], 10.0)   # las líneas que no pasan por la columna van de pared a pared
+
+    def test_ceiling_on_the_bed_is_not_a_bridge(self):
+        r = (3.0, 7.0, 0.0, 20.0, 0.0)
+        c, idx = quads(ceiling(*r), wall_above('y0', *r))
+        st = A.classify(c, [], idx, UP, 0.0, 45, bridge_max=23.0)[3]
+        self.assertAlmostEqual(st['bed'], 80.0)
+        self.assertEqual(st['bridge'], 0.0)
+
+    def test_wall_with_other_nodes_along_the_edge(self):
+        # Fusion discretiza por separado las dos caras de una arista
+        x0, x1, y0, y1, z = self.R
+        faces = [ceiling(*self.R)]
+        for ya, yb in ((y0, 8.0), (8.0, y1)):
+            faces += [wall_below('x0', x0, x1, ya, yb, z), wall_below('x1', x0, x1, ya, yb, z)]
+        c, idx = quads(*faces)
+        self.assertAlmostEqual(A.classify(c, [], idx, UP, 0.0, 45, bridge_max=23.0)[3]['span'], 4.0)
+
+    def test_curved_wall_within_mesh_tolerance(self):
+        # la cuerda de la pared queda a 0,05 de la del techo: hace falta edge_tol
+        x0, x1, y0, y1, z = self.R
+        c, idx = quads(ceiling(*self.R), wall_below('x0', x0 - 0.05, x1, y0, y1, z), wall_below('x1', *self.R))
+        self.assertEqual(A.classify(c, [], idx, UP, 0.0, 45, bridge_max=23.0)[3]['bridge'], 0.0)
+        self.assertAlmostEqual(A.classify(c, [], idx, UP, 0.0, 45, bridge_max=23.0, edge_tol=0.06)[3]['span'], 4.0)
+
+    def test_other_up_direction(self):
+        # el mismo techo con Y arriba: (x, y, z) -> (x, z, -y)
+        faces = [ceiling(*self.R), wall_below('x0', *self.R), wall_below('x1', *self.R)]
+        c, idx = quads(*[[[p[0], p[2], -p[1]] for p in f] for f in faces])
+        st = A.classify(c, [], idx, (0.0, 1.0, 0.0), 0.0, 45, bridge_max=23.0)[3]
+        self.assertAlmostEqual(st['span'], 4.0)
+
+    def test_flat_facet_on_top_of_an_arch_is_not_a_bridge(self):
+        # arco facetado: al lado de la faceta plana, las caras bajan 20° y son voladizo
+        z = 5.0
+        d = 2.0 * math.tan(math.radians(20))
+        left = [[3, 0, z], [1, 0, z - d], [1, 20, z - d], [3, 20, z]]
+        right = [[7, 0, z], [7, 20, z], [9, 20, z - d], [9, 0, z - d]]
+        c, idx = quads(ceiling(*self.R), left, right)
+        st = A.classify(c, [], idx, UP, 0.0, 45, bridge_max=23.0)[3]
+        self.assertEqual(st['bridge'], 0.0)
+        self.assertAlmostEqual(st['worst'], 0.0)
+
+    def test_teardrop_slopes_at_the_limit_hold_a_bridge(self):
+        # gota con techo plano: las caras de al lado bajan a 45° y con límite de 45° no son voladizo
+        z = 5.0
+        left = [[3, 0, z], [1, 0, z - 2], [1, 20, z - 2], [3, 20, z]]
+        right = [[7, 0, z], [7, 20, z], [9, 20, z - 2], [9, 0, z - 2]]
+        c, idx = quads(ceiling(*self.R), left, right)
+        self.assertAlmostEqual(A.classify(c, [], idx, UP, 0.0, 45, bridge_max=23.0)[3]['span'], 4.0)
+
+    def test_sliver_narrower_than_the_mesh_tolerance_is_not_a_bridge(self):
+        # tira de 0,1 de ancho al lado de una pared: con edge_tol = 0,12 sus dos bordes parecen apoyados
+        z = 5.0
+        c, idx = quads(ceiling(3.0, 3.1, 0.0, 20.0, z), wall_below('x0', 3.0, 3.1, 0.0, 20.0, z))
+        st = A.classify(c, [], idx, UP, 0.0, 45, bridge_max=23.0, edge_tol=0.12)[3]
+        self.assertEqual(st['bridge'], 0.0)
+        self.assertIsNone(st['span'])
+
+    def test_skew_window(self):
+        # techo en rombo: las paredes no son perpendiculares a los bordes libres
+        z = 5.0
+        roof = [[0, 0, z], [6, 10, z], [10, 10, z], [4, 0, z]]
+        jamb1 = [[0, 0, z], [0, 0, 3], [6, 10, 3], [6, 10, z]]
+        jamb2 = [[4, 0, z], [4, 0, 3], [10, 10, 3], [10, 10, z]]
+        c, idx = quads(roof, jamb1, jamb2)
+        st = A.classify(c, [], idx, UP, 0.0, 45, bridge_max=23.0)[3]
+        self.assertGreater(st['bridge'], 0.0)
+        self.assertAlmostEqual(st['span'], 4.0)
+
+
 class OffsetTest(unittest.TestCase):
     def test_moves_along_unit_normal(self):
         out = A.offset([1.0, 2.0, 3.0, 0.0, 0.0, 0.0], [0.0, 0.0, 2.0, 3.0, 4.0, 0.0], 0.5)

@@ -3,7 +3,8 @@ FDM overhangs (FDMOverhang) - Fusion 360 add-in
 
 Paints over the model what will need support, like a slicer's support
 preview: faces pointing down at less than the limit angle from the
-horizontal in red and orange, and what rests on the bed in green.
+horizontal in red and orange, bridges in blue and what rests on the bed
+in green.
 The design is not modified.
 
 Install (Windows)

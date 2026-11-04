@@ -1,6 +1,7 @@
 # Add-in de Fusion 360 con dos comandos en INSPECCIONAR:
 # - "Voladizos FDM": pinta encima del modelo, como la vista de soportes de un laminador, lo que mira hacia abajo
-#   con menos del ángulo límite desde la horizontal (rojo -> naranja) y lo que apoya en la cama (verde).
+#   con menos del ángulo límite desde la horizontal (rojo -> naranja), los puentes (azul) y lo que apoya en la
+#   cama (verde).
 # - "Espesor y espacios": mapa de color del espesor de las paredes o del espacio entre superficies (rojo lo
 #   estrecho -> azul lo ancho), o solo lo que no llega al mínimo.
 # Son gráficos personalizados: no tocan el diseño ni la línea de tiempo y se borran al cerrar el diálogo.
@@ -76,7 +77,7 @@ def _default_bed():
 
 def _load_settings():
     s = {'bodies': 'visible', 'bed': _default_bed(), 'own_bed': False, 'angle': 45, 'gradient': True,
-         'quality': 'normal', 'keep': False,
+         'quality': 'normal', 'keep': False, 'bridge': True, 'bridge_max': 23.0,
          'th_bodies': 'visible', 'th_res': 'normal', 'th_paint': 'map', 'th_limit': 0.8, 'th_lo': 0.0,
          'th_hi': 4.0, 'th_keep': False, 'th_mode': 'thickness', 'gap_limit': 0.1, 'gap_lo': 0.0, 'gap_hi': 2.0,
          'th_xray': True}
@@ -118,6 +119,8 @@ def _read(inputs):
     return {'bodies': _choice(inputs, 'bodies', BODIES), 'bed': _choice(inputs, 'bed', BEDS),
             'own_bed': inputs.itemById('own_bed').value, 'angle': inputs.itemById('angle').valueOne,
             'gradient': inputs.itemById('gradient').value, 'quality': _choice(inputs, 'quality', QUALITIES),
+            'bridge': inputs.itemById('bridge').value,
+            'bridge_max': round(inputs.itemById('bridge_max').value * 10, 4),   # mm
             'keep': inputs.itemById('keep').value}
 
 
@@ -184,12 +187,16 @@ def _update_visibility(inputs):
     face = _choice(inputs, 'bed', BEDS) == 'face'
     inputs.itemById('body_sel').isVisible = pick
     inputs.itemById('face_sel').isVisible = face
+    inputs.itemById('bridge_max').isVisible = inputs.itemById('bridge').value
 
 
-def _legend(angle):
+def _legend(s):
     sq = '<font color="#%02x%02x%02x">■</font> %s'
-    return '%s &nbsp; %s' % (sq % (A.RED[:3] + (tr('voladizo (menos de %d° desde la horizontal)') % angle,)),
-                             sq % (A.BED_COLOR[:3] + (tr('apoyo en la cama'),)))
+    items = [sq % (A.RED[:3] + (tr('voladizo (menos de %d° desde la horizontal)') % s['angle'],))]
+    if s['bridge']:
+        items.append(sq % (A.BRIDGE_COLOR[:3] + (tr('puente (hasta %s mm)') % _mm(s['bridge_max']),)))
+    items.append(sq % (A.BED_COLOR[:3] + (tr('apoyo en la cama'),)))
+    return ' &nbsp; '.join(items)
 
 
 def _draw(inputs):
@@ -274,19 +281,24 @@ def _analyse(design, s, picked, face):
     lows = [A.lowest(c, up) for _, (c, _, _, _) in meshes]
     bed = min(lows)
 
-    total = over = on_bed = 0.0
-    worst, tris, rows, layers = None, 0, [], []
+    total = over = on_bed = bridge = 0.0
+    worst, span, long_span, tris, rows, layers = None, None, None, 0, [], []
+    bridge_max = s['bridge_max'] / 10.0 if s['bridge'] else None   # cm
     for (b, (c, n, idx, gap)), low in zip(meshes, lows):
-        tc, tn, tcol, st = A.classify(c, n, idx, up, low if s['own_bed'] else bed, s['angle'], s['gradient'], TOL_CM)
+        tc, tn, tcol, st = A.classify(c, n, idx, up, low if s['own_bed'] else bed, s['angle'], s['gradient'], TOL_CM,
+                                      bridge_max, gap)
         tris += len(idx) // 3
         total, over, on_bed = total + st['total'], over + st['overhang'], on_bed + st['bed']
+        bridge += st['bridge']
+        span = max(span or 0.0, st['span']) if st['span'] is not None else span
+        long_span = max(long_span or 0.0, st['long_span']) if st['long_span'] is not None else long_span
         if st['worst'] is not None:
             worst = st['worst'] if worst is None else min(worst, st['worst'])
             rows.append((st['overhang'], b.name))
         if tc:
             layers.append((A.offset(tc, tn, gap), tn, tcol))
 
-    lines = [_legend(s['angle']), '']
+    lines = [_legend(s), '']
     if over:
         lines.append(tr('Voladizo: <b>%.0f mm²</b> (%.1f %% de la superficie), el peor a %.0f°')
                      % (over * 100, 100 * over / total, worst))
@@ -294,13 +306,19 @@ def _analyse(design, s, picked, face):
             lines += ['&nbsp; • %s: %.0f mm²' % (name, a * 100) for a, name in sorted(rows, reverse=True)]
     else:
         lines.append(tr('Sin voladizos.'))
+    if bridge:
+        lines.append(tr('Puentes: <b>%.0f mm²</b>, el más largo %s mm') % (bridge * 100, _mm(span * 10)))
+    if long_span:
+        lines.append('<font color="#c80">⚠ %s</font>' % (tr('Puente de %s mm, más que el máximo: sigue en rojo.')
+                                                         % _mm(long_span * 10)))
     if on_bed:
         lines.append(tr('Apoyo en la cama: %.0f mm²') % (on_bed * 100))
     else:
         lines.append('<font color="#c80">⚠ %s</font>'
                      % tr('Nada apoya en plano sobre la cama: reorienta la pieza o usa borde de adherencia.'))
     lines.append('<font color="#888">%s</font>' % (tr('%d triángulos en %.2f s') % (tris, time.time() - t0)))
-    _state['result'] = {'total': total, 'overhang': over, 'bed': on_bed, 'worst': worst}
+    _state['result'] = {'total': total, 'overhang': over, 'bed': on_bed, 'worst': worst, 'bridge': bridge,
+                        'span': span, 'long_span': long_span}
     return '<br>'.join(lines), layers
 
 
@@ -337,6 +355,11 @@ class _CreatedHandler(adsk.core.CommandCreatedEventHandler):
             sl = inputs.addIntegerSliderCommandInput('angle', tr('Ángulo límite (°)'), 0, 89)
             sl.valueOne = int(s['angle'])
             inputs.addBoolValueInput('gradient', tr('Degradado'), True, '', bool(s['gradient']))
+            br = inputs.addBoolValueInput('bridge', tr('Detectar puentes'), True, '', bool(s['bridge']))
+            br.tooltip = tr('Pinta en otro color los techos planos tendidos entre dos paredes, que se imprimen sin '
+                            'soporte si no son muy largos. Sin marcar, salen como voladizo.')
+            inputs.addValueInput('bridge_max', tr('Puente máximo'), 'mm',
+                                 adsk.core.ValueInput.createByString('%s mm' % s['bridge_max']))
             dd = inputs.addDropDownCommandInput('quality', tr('Calidad de la malla'),
                                                 adsk.core.DropDownStyles.TextListDropDownStyle)
             for key, label, _ in QUALITIES:
@@ -344,7 +367,7 @@ class _CreatedHandler(adsk.core.CommandCreatedEventHandler):
             keep = inputs.addBoolValueInput('keep', tr('Mantener al cerrar'), True, '', bool(s['keep']))
             keep.tooltip = tr('La capa se queda al cerrar el diálogo y se recalcula cada vez que cambia el modelo. '
                               'Para quitarla, vuelve a abrir el diálogo y desmárcala. No se guarda en el archivo.')
-            inputs.addTextBoxCommandInput('info', tr('Resultado'), '', 8, True)
+            inputs.addTextBoxCommandInput('info', tr('Resultado'), '', 10, True)
             _update_visibility(inputs)
 
             for ev, h in ((cmd.executePreview, _PreviewHandler()), (cmd.inputChanged, _ChangedHandler()),
@@ -895,7 +918,8 @@ def run(context):
         cmd_def = _ui.commandDefinitions.addButtonDefinition(
             CMD_ID, tr('Voladizos FDM'),
             tr('Pinta como un laminador lo que necesitará soporte: en rojo lo que mira hacia abajo con menos del '
-               'ángulo límite desde la horizontal y en verde lo que apoya en la cama. No modifica el diseño.'),
+               'ángulo límite desde la horizontal, en azul los puentes y en verde lo que apoya en la cama. '
+               'No modifica el diseño.'),
             os.path.join(HERE, 'resources'))
         h = _CreatedHandler()
         cmd_def.commandCreated.add(h)
