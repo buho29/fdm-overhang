@@ -55,7 +55,7 @@ Test part with the scale from 0 to 4 mm: fins from 0.4 to 3.2 mm (orange to ligh
 | Minimum thickness / Minimum gap | What is below it is counted in the result (area and ✖). For example a 0.8 mm wall, two lines of a 0.4 nozzle. Each measure keeps its own value |
 | Paint | *Colour map* or *Only what is below the minimum* (in red) |
 | Scale from / to | Values of the red and the blue in the colour map. Each measure keeps its own |
-| Resolution | Maximum side of the triangles used to measure: *Fast (2 mm)*, *Normal (1 mm)* or *Fine (0.5 mm)* |
+| Resolution | Maximum side of the triangles used to measure: *Fast (2 mm)*, *Normal (1 mm)* or *Fine (0.5 mm)*. In mesh bodies (an STL) their triangles are split down to that size. The dialog always opens in *Fast*, because it does not appear until the first measurement ends |
 | See through | Makes the measured bodies transparent while the dialog is open, to see what is inside. They go back to their opacity when it is closed, also with *Keep when closed* |
 | Keep when closed | The layer stays after closing the dialog until one of the bodies changes; then it is removed and the dialog has to be opened again (it cannot be recomputed outside the dialog). It is not saved in the file |
 

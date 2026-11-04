@@ -50,6 +50,8 @@ GAP_BACK = 0.001          # cm: hasta 0,01 mm de separación o de solape cuenta 
 GAP_MARGIN = 2 * GAP_SURFACE_TOL   # cm: error de la medida entre dos curvas, una holgura justa no es fallo
 MODES = [('thickness', 'Espesor'), ('gap', 'Espacio')]
 XRAY_OPACITY = 0.25
+BUSY_DELAY = 1       # s: si la medida acaba antes, no llega a salir la ventana de progreso
+BUSY_EVERY = 2000    # rayos entre dos actualizaciones de la ventana de progreso
 QUALITIES = [('low', 'Baja', adsk.fusion.TriangleMeshQualityOptions.LowQualityTriangleMesh),
              ('normal', 'Normal', adsk.fusion.TriangleMeshQualityOptions.NormalQualityTriangleMesh),
              ('high', 'Alta', adsk.fusion.TriangleMeshQualityOptions.HighQualityTriangleMesh)]
@@ -78,7 +80,7 @@ def _default_bed():
 def _load_settings():
     s = {'bodies': 'visible', 'bed': _default_bed(), 'own_bed': False, 'angle': 45, 'gradient': True,
          'quality': 'normal', 'keep': False, 'bridge': True, 'bridge_max': 23.0,
-         'th_bodies': 'visible', 'th_res': 'normal', 'th_paint': 'map', 'th_limit': 0.8, 'th_lo': 0.0,
+         'th_bodies': 'visible', 'th_res': 'coarse', 'th_paint': 'map', 'th_limit': 0.8, 'th_lo': 0.0,
          'th_hi': 4.0, 'th_keep': False, 'th_mode': 'thickness', 'gap_limit': 0.1, 'gap_lo': 0.0, 'gap_hi': 2.0,
          'th_xray': True}
     try:
@@ -92,6 +94,8 @@ def _load_settings():
             s[k] = 'visible'
     if s['bed'] == 'face':
         s['bed'] = _default_bed()
+    # el diálogo no se dibuja hasta que acaba la primera medida: se abre siempre en la resolución rápida
+    s['th_res'] = 'coarse'
     return s
 
 
@@ -333,6 +337,9 @@ class _CreatedHandler(adsk.core.CommandCreatedEventHandler):
             _state.pop('html', None)
             cmd.isOKButtonVisible = False   # solo se mira: no hay nada que aceptar
             cmd.cancelButtonText = tr('Cerrar')
+            # el tamaño inicial, para que Fusion lo tenga en cuenta al colocar el diálogo la primera vez: con
+            # solo el mínimo, lo coloca con su ancho por defecto y luego crece fuera de la pantalla
+            cmd.setDialogInitialSize(380, 620)
             cmd.setDialogMinimumSize(380, 300)
             inputs = cmd.commandInputs
             s = _load_settings()
@@ -369,7 +376,7 @@ class _CreatedHandler(adsk.core.CommandCreatedEventHandler):
             keep = inputs.addBoolValueInput('keep', tr('Mantener al cerrar'), True, '', bool(s['keep']))
             keep.tooltip = tr('La capa se queda al cerrar el diálogo y se recalcula cada vez que cambia el modelo. '
                               'Para quitarla, vuelve a abrir el diálogo y desmárcala. No se guarda en el archivo.')
-            inputs.addTextBoxCommandInput('info', tr('Resultado'), '', 10, True)
+            inputs.addTextBoxCommandInput('info', tr('Resultado'), '', 10, True).isFullWidth = True
             _update_visibility(inputs)
 
             for ev, h in ((cmd.executePreview, _PreviewHandler()), (cmd.inputChanged, _ChangedHandler()),
@@ -456,12 +463,58 @@ def _th_read(inputs):
             'gap_hi': round(inputs.itemById('gap_hi').value * 10, 4)}
 
 
-def _th_cast(mesh_body, coords, indices):
+class _Busy:
+    """Ventana de progreso mientras se mide: el diálogo no se dibuja hasta que acaba la medida. steps es el número
+    de cuerpos; advance(i, f) indica que va por la fracción f del cuerpo i, y drawing() que ya solo queda colorear y
+    pintar. Se queda en _th_state['busy'] y la cierra _th_draw al acabar de pintar. Un fallo de la ventana no puede
+    estropear la medida. No usar adsk.doEvents() aquí: dentro de una vista previa colgó y cerró Fusion."""
+
+    def __init__(self, steps):
+        self.steps = steps
+        self.dlg = None
+        try:
+            dlg = _ui.createProgressDialog()
+            dlg.isCancelButtonShown = False
+            dlg.show(tr('Espesor y espacios'), tr('Midiendo… %p %'), 0, 1000, BUSY_DELAY)
+            self.dlg = dlg
+        except RuntimeError as e:
+            _state.setdefault('busy_errors', []).append(str(e))
+        _th_state['busy'] = self
+
+    def drawing(self):
+        # sin tocar la barra: si llega al máximo, la ventana se cierra sola
+        if self.dlg:
+            try:
+                self.dlg.message = tr('Dibujando…')
+            except RuntimeError as e:
+                _state.setdefault('busy_errors', []).append(str(e))
+                self.dlg = None
+
+    def advance(self, i, f):
+        if self.dlg:
+            try:
+                self.dlg.progressValue = int(1000 * (i + f) / self.steps)
+            except RuntimeError as e:
+                _state.setdefault('busy_errors', []).append(str(e))
+                self.dlg = None
+
+    def close(self):
+        if self.dlg:
+            try:
+                self.dlg.hide()
+            except RuntimeError as e:
+                _state.setdefault('busy_errors', []).append(str(e))
+
+
+def _th_cast(mesh_body, coords, indices, tick=None):
     """Espesor (cm) de cada triángulo: distancia desde su centro, por la normal hacia dentro, hasta el primer
-    choque con la malla (sin contar el propio triángulo, que está a distancia 0)."""
+    choque con la malla (sin contar el propio triángulo, que está a distancia 0). tick(f) avisa de la fracción hecha."""
     P, V = adsk.core.Point3D.create, adsk.core.Vector3D.create
     out = []
+    total = len(indices) // 3
     for ray in T.rays(coords, indices):
+        if tick and len(out) % BUSY_EVERY == 0:
+            tick(len(out) / total)
         w = T.NO_HIT
         if ray:
             o = P(*ray[0])
@@ -504,17 +557,17 @@ def _drop_temp(objs):
             pass
 
 
-def _th_solid(native, coords, indices):
+def _th_solid(native, coords, indices, tick=None):
     """Espesor de los triángulos de un cuerpo sólido, con una copia temporal en malla."""
     design = adsk.fusion.Design.cast(native.parentComponent.parentDesign)
     objs = _temp_meshes(design, [(coords, indices)])
     try:
-        return _th_cast(objs[0], coords, indices)
+        return _th_cast(objs[0], coords, indices, tick)
     finally:
         _drop_temp(objs)
 
 
-def _th_mesh(body, res):
+def _th_mesh(body, res, tick=None):
     """(coords, normales, índices, espesor de cada triángulo, malla cerrada, separación) del cuerpo en
     coordenadas del raíz (cm), guardada mientras dure el diálogo."""
     key = (body.entityToken, res)
@@ -523,18 +576,16 @@ def _th_mesh(body, res):
         mesh_body = adsk.fusion.MeshBody.cast(native)
         if mesh_body:
             pm = mesh_body.mesh
-            coords, idx = list(pm.nodeCoordinatesAsDouble), list(pm.triangleNodeIndices)
-            normals = list(pm.normalVectorsAsDouble)
-            if len(normals) != len(coords):
-                normals = T.vertex_normals(coords, idx)
-            thick, closed, gap = _th_cast(mesh_body, coords, idx), mesh_body.isClosed, A.lift(0.0, 0.0)
+            coords, normals, idx = T.refine(list(pm.nodeCoordinatesAsDouble), list(pm.triangleNodeIndices),
+                                            dict((k, v) for k, _, v in RESOLUTIONS)[res])
+            thick, closed, gap = _th_cast(mesh_body, coords, idx, tick), mesh_body.isClosed, A.lift(0.0, 0.0)
         else:
             calc = native.meshManager.createMeshCalculator()
             calc.maxSideLength = dict((k, v) for k, _, v in RESOLUTIONS)[res]
             calc.surfaceTolerance = TH_SURFACE_TOL
             m = calc.calculate()
             coords, normals, idx = list(m.nodeCoordinatesAsDouble), list(m.normalVectorsAsDouble), list(m.nodeIndices)
-            thick, closed = _th_solid(native, coords, idx), True
+            thick, closed = _th_solid(native, coords, idx, tick), True
             gap = A.lift(TH_SURFACE_TOL, _display_tolerance(native))
         thick = T.convex_min(coords, idx, thick)   # cantos de las paredes finas
         if body.assemblyContext:   # el espesor no cambia al mover la pieza
@@ -574,10 +625,8 @@ def _gap_mesh(body, res):
     mesh_body = adsk.fusion.MeshBody.cast(native)
     if mesh_body:
         pm = mesh_body.mesh
-        coords, idx = list(pm.nodeCoordinatesAsDouble), list(pm.triangleNodeIndices)
-        normals = list(pm.normalVectorsAsDouble)
-        if len(normals) != len(coords):
-            normals = T.vertex_normals(coords, idx)
+        coords, normals, idx = T.refine(list(pm.nodeCoordinatesAsDouble), list(pm.triangleNodeIndices),
+                                        dict((k, v) for k, _, v in RESOLUTIONS)[res])
         closed, lift = mesh_body.isClosed, A.lift(0.0, 0.0)
     else:
         calc = native.meshManager.createMeshCalculator()
@@ -603,12 +652,16 @@ def _gap_measure(design, bodies, res):
     for m in meshes:
         xyz = [m[0][i::3] for i in range(3)]
         boxes.append((tuple(min(v) for v in xyz), tuple(max(v) for v in xyz)))
+    busy = _Busy(len(meshes))
     objs = _temp_meshes(design, [(m[0], m[2]) for m in meshes])
     results = []
     try:
         for i, m in enumerate(meshes):
             vals, kinds, who = [], [], []
+            total = len(m[2]) // 3
             for ray in T.rays(m[0], m[2], outward=True):
+                if len(vals) % BUSY_EVERY == 0:
+                    busy.advance(i, len(vals) / total)
                 if not ray:
                     vals.append(T.NO_HIT), kinds.append(T.GAP), who.append(-1)
                     continue
@@ -634,6 +687,7 @@ def _gap_measure(design, bodies, res):
             results.append((vals, kinds, who))
     finally:
         _drop_temp(objs)
+    busy.drawing()
     _gap_cache[key] = (meshes, results)
     return _gap_cache[key]
 
@@ -714,6 +768,12 @@ def _th_analyse(design, s, picked):
     layers, rows, open_bodies = [], [], []
     thin = total = 0.0
     tris = 0
+    pending = [b for b in bodies if (b.entityToken, s['th_res']) not in _th_meshes]
+    if pending:
+        busy = _Busy(len(pending))
+        for i, b in enumerate(pending):
+            _th_mesh(b, s['th_res'], lambda f, i=i: busy.advance(i, f))
+        busy.drawing()
     for b in bodies:
         c, n, idx, thick, closed, gap = _th_mesh(b, s['th_res'])
         if not closed:
@@ -762,13 +822,18 @@ def _th_draw(inputs):
     if _th_state.get('html') != html:
         _th_state['html'] = html
         inputs.itemById('th_info').formattedText = html
-    if design:
-        _paint(design, layers, TH_GROUP_ID)
-        if _th_state.get('last') and _th_state['last']['settings']['th_xray']:
-            # dentro de la vista previa: Fusion devuelve la opacidad de cada cuerpo al cambiar un campo y al cerrar
-            for b in bodies:
-                b.opacity = XRAY_OPACITY
-    _app.activeViewport.refresh()
+    try:
+        if design:
+            _paint(design, layers, TH_GROUP_ID)
+            if _th_state.get('last') and _th_state['last']['settings']['th_xray']:
+                # dentro de la vista previa: Fusion devuelve la opacidad de cada cuerpo al cambiar un campo y al cerrar
+                for b in bodies:
+                    b.opacity = XRAY_OPACITY
+        _app.activeViewport.refresh()
+    finally:
+        busy = _th_state.pop('busy', None)
+        if busy:
+            busy.close()
 
 
 def _th_drop_keep():
@@ -797,6 +862,9 @@ class _ThCreatedHandler(adsk.core.CommandCreatedEventHandler):
             _th_state.pop('html', None)
             cmd.isOKButtonVisible = False
             cmd.cancelButtonText = tr('Cerrar')
+            # el tamaño inicial, para que Fusion lo tenga en cuenta al colocar el diálogo la primera vez: con
+            # solo el mínimo, lo coloca con su ancho por defecto y luego crece fuera de la pantalla
+            cmd.setDialogInitialSize(380, 620)
             cmd.setDialogMinimumSize(380, 300)
             inputs = cmd.commandInputs
             s = _load_settings()
@@ -833,7 +901,7 @@ class _ThCreatedHandler(adsk.core.CommandCreatedEventHandler):
             keep = inputs.addBoolValueInput('th_keep', tr('Mantener al cerrar'), True, '', bool(s['th_keep']))
             keep.tooltip = tr('La capa se queda al cerrar el diálogo, hasta que cambie alguno de los cuerpos: '
                               'entonces se quita y hay que volver a abrir el diálogo. No se guarda en el archivo.')
-            inputs.addTextBoxCommandInput('th_info', tr('Resultado'), '', 8, True)
+            inputs.addTextBoxCommandInput('th_info', tr('Resultado'), '', 8, True).isFullWidth = True
             _th_update_visibility(inputs)
 
             for ev, h in ((cmd.executePreview, _ThPreviewHandler()), (cmd.inputChanged, _ThChangedHandler()),

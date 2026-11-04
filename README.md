@@ -55,7 +55,7 @@ Pieza de prueba con la escala de 0 a 4 mm: aletas de 0,4 a 3,2 mm (de naranja a 
 | Espesor mínimo / Espacio mínimo | Lo que no llega se cuenta en el resultado (área y ✖). Por ejemplo 0,8 mm de pared, dos pasadas de una boquilla de 0,4. Cada medida guarda su propio valor |
 | Pintar | *Mapa de color* o *Solo lo que no llega al mínimo* (en rojo) |
 | Escala desde / hasta | Medidas del rojo y del azul en el mapa de color. Cada medida guarda las suyas |
-| Resolución | Lado máximo de los triángulos con los que se mide: *Rápida (2 mm)*, *Normal (1 mm)* o *Fina (0,5 mm)* |
+| Resolución | Lado máximo de los triángulos con los que se mide: *Rápida (2 mm)*, *Normal (1 mm)* o *Fina (0,5 mm)*. En los cuerpos de malla (un STL) se parten sus triángulos hasta ese tamaño. El diálogo se abre siempre en *Rápida*, porque no aparece hasta que termina la primera medida |
 | Ver a través | Pone los cuerpos medidos en transparencia mientras el diálogo está abierto, para ver lo que queda por dentro. Al cerrar vuelven a su opacidad, también con *Mantener al cerrar* |
 | Mantener al cerrar | La capa se queda al cerrar el diálogo hasta que cambie alguno de los cuerpos; entonces se quita y hay que volver a abrir el diálogo (fuera del diálogo no se puede recalcular). No se guarda en el archivo |
 

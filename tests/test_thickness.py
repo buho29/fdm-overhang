@@ -1,4 +1,5 @@
 # Pruebas de overhang/thickness.py sin Fusion:  python -m unittest discover -s tests
+import math
 import os
 import sys
 import unittest
@@ -64,13 +65,103 @@ class ColorizeTest(unittest.TestCase):
         self.assertEqual(T.node_values([0, 1, 2, 0, 2, 3], 4, [1.0, 3.0], 4.0), [2.0, 1.0, 2.0, 3.0])
 
 
-class NormalsTest(unittest.TestCase):
-    def test_flat_square_points_up(self):
+def welded_box(sx=4.0, sy=4.0, sz=4.0):
+    """Caja con los nodos compartidos entre caras, como un STL importado, en sentido antihorario visto desde fuera."""
+    c = []
+    for z in (0.0, sz):
+        for y in (0.0, sy):
+            for x in (0.0, sx):
+                c += [x, y, z]
+    idx = []
+    for a, b, d, e in ((0, 2, 3, 1), (4, 5, 7, 6), (0, 1, 5, 4), (2, 6, 7, 3), (0, 4, 6, 2), (1, 3, 7, 5)):
+        idx += [a, b, d, a, d, e]
+    return c, idx
+
+
+def total_area(c, idx):
+    return sum(T._tri(c, idx, t)[2] for t in range(0, len(idx), 3))
+
+
+class RefineTest(unittest.TestCase):
+    def test_no_side_longer_than_the_maximum(self):
         c, _, idx = square()
-        n = T.vertex_normals(c, idx)
+        out, n, oi = T.refine(c, idx, 0.3)
+        self.assertGreater(len(oi) // 3, 2)
+        for t in range(0, len(oi), 3):
+            for p, q in ((oi[t], oi[t + 1]), (oi[t + 1], oi[t + 2]), (oi[t + 2], oi[t])):
+                d = sum((out[3 * p + k] - out[3 * q + k]) ** 2 for k in range(3)) ** 0.5
+                self.assertLessEqual(d, 0.3 + 1e-9)
+
+    def test_keeps_the_area_and_the_direction(self):
+        c, _, idx = square()
+        out, n, oi = T.refine(c, idx, 0.3)
+        self.assertAlmostEqual(total_area(out, oi), total_area(c, idx))
+        for t in range(0, len(oi), 3):
+            self.assertGreater(T._tri(out, oi, t)[1][2], 0.0)
         for i in range(0, len(n), 3):
             self.assertEqual([round(v, 6) for v in n[i:i + 3]], [0.0, 0.0, 1.0])
 
+    def test_long_slivers_are_split_less(self):
+        # 40 de largo y 0,01 de ancho, con un máximo de 2: basta con 8 de largo, no hacen falta 2
+        c = [0.0, 0.0, 0.0, 40.0, 0.0, 0.0, 40.0, 0.01, 0.0, 0.0, 0.01, 0.0]
+        out, _, oi = T.refine(c, [0, 1, 2, 0, 2, 3], 2.0)
+        longest = max(max(abs(out[3 * oi[t + i]] - out[3 * oi[t + j]]) for i, j in ((0, 1), (1, 2), (2, 0)))
+                      for t in range(0, len(oi), 3))
+        self.assertLessEqual(longest, 8.0 + 1e-9)
+        self.assertGreater(longest, 2.0)
+        self.assertAlmostEqual(total_area(out, oi), 0.4)
+
+    def test_small_triangles_stay_as_they_are(self):
+        c, _, idx = square()
+        out, _, oi = T.refine(c, idx, 100.0)
+        self.assertEqual(len(oi), len(idx))
+        self.assertEqual(len(out) // 3, 4)   # square() repite nodos en la diagonal
+
+    def test_sharp_edges_split_the_nodes_between_faces(self):
+        c, idx = welded_box()
+        out, n, oi = T.refine(c, idx, 100.0)
+        self.assertEqual(len(out) // 3, 6 * 4)   # cuatro nodos propios por cara, y no ocho en total
+        self.assertEqual(len(oi) // 3, 12)
+        for i in range(0, len(n), 3):
+            self.assertEqual(sorted(abs(round(v, 6)) for v in n[i:i + 3]), [0.0, 0.0, 1.0])
+
+    def test_gentle_curve_stays_a_single_face_with_smooth_normals(self):
+        # dos facetas plegadas 20° comparten nodo y normal en el pliegue
+        s, co = math.sin(math.radians(20)), math.cos(math.radians(20))
+        c = [0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1 + co, 0, s, 1 + co, 1, s]
+        idx = [3, 0, 1, 3, 1, 2, 2, 1, 4, 2, 4, 5]
+        out, n, oi = T.refine([float(v) for v in c], idx, 100.0)
+        self.assertEqual(len(out) // 3, 6)
+        fold = out.index(1.0, 3)   # el nodo (1, 0, 0)
+        self.assertEqual(fold % 3, 0)
+        nz = n[fold + 2]
+        self.assertTrue(0.9 < nz < 1.0)
+        self.assertLess(n[fold], 0.0)
+
+    def test_separate_nodes_at_the_same_place_are_joined(self):
+        c, _, idx = square()
+        apart = [v for k in idx for v in c[3 * k:3 * k + 3]]
+        out, _, oi = T.refine(apart, list(range(len(idx))), 100.0)
+        self.assertEqual(len(out) // 3, 4)
+
+    def test_degenerate_triangles_disappear(self):
+        c = [0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 2.0, 0.0, 0.0, 0.0, 1.0, 0.0]
+        out, _, oi = T.refine(c, [0, 1, 2, 0, 1, 3], 100.0)
+        self.assertEqual(len(oi), 3)
+
+    def test_big_face_does_not_inherit_a_thin_edge(self):
+        # el problema del STL: el valor fino de los cantos se extendía a toda la cara plana
+        def share_of_top_marked(coords, indices):
+            cross = [T._tri(coords, indices, t)[1] for t in range(0, len(indices), 3)]
+            thick = [40.0 if abs(cr[2]) > 0 else 1.0 for cr in cross]   # los laterales son el canto fino
+            fixed = T.convex_min(coords, indices, thick)
+            top = [i for i, cr in enumerate(cross) if cr[2] > 0]
+            return sum(1 for i in top if fixed[i] == 1.0) / len(top)
+
+        c, idx = welded_box(40.0, 40.0, 1.0)
+        self.assertEqual(share_of_top_marked(c, idx), 1.0)   # sin partir, la cara entera
+        out, _, oi = T.refine(c, idx, 2.0)
+        self.assertLess(share_of_top_marked(out, oi), 0.3)   # partida, solo la orilla
 
 def fin_corner():
     """Dos triángulos que forman una arista convexa de 90°: la cara de arriba (z=1, mira a +z) y la lateral

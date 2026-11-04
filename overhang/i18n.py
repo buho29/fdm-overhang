@@ -57,6 +57,8 @@ EN = {
         'To remove it, open the dialog again and uncheck this. It is not saved in the file.',
     # ------------------------------------------------ espesor de pared
     'Espesor y espacios': 'Thickness and gaps',
+    'Midiendo… %p %': 'Measuring… %p %',
+    'Dibujando…': 'Drawing…',
     'Mapa de color del espesor de las paredes o del espacio entre superficies, de rojo (estrecho) a '
     'azul (ancho), o solo lo que no llega al mínimo. No modifica el diseño.':
         'Colour map of the wall thickness or of the gap between surfaces, from red (narrow) to blue (wide), '
