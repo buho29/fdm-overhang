@@ -9,7 +9,7 @@ Pinta encima del modelo lo que va a necesitar soporte, como la vista de soportes
 
 No modifica el diseño: son gráficos personalizados, no entran en la línea de tiempo y desaparecen al cerrar el diálogo.
 
-Está en **DISEÑO > INSPECCIONAR > Voladizos FDM**. En el mismo panel hay un segundo botón, [Espesor de pared](#espesor-de-pared), que pinta el espesor de las paredes.
+Está en **DISEÑO > INSPECCIONAR > Voladizos FDM**. En el mismo panel hay un segundo botón, [Espesor y espacios](#espesor-y-espacios), que pinta el espesor de las paredes o el espacio entre superficies.
 
 ![Voladizos a 45°](img/ejemplo.png)
 
@@ -35,32 +35,49 @@ En **Resultado** salen el área en voladizo (total, porcentaje de la superficie 
 
 Lo que está justo en el límite (una gota o un chaflán a 45° exactos con el límite en 45°) no se marca: hay medio grado de margen.
 
-## Espesor de pared
+## Espesor y espacios
 
-Segundo botón, en **DISEÑO > INSPECCIONAR > Espesor de pared**. Pinta el espesor de las paredes de rojo (fino) a azul (grueso), o solo lo que no llega al espesor mínimo, y dice cuál es el punto más fino de cada cuerpo.
+Segundo botón, en **DISEÑO > INSPECCIONAR > Espesor y espacios**. Pinta el espesor de las paredes o el espacio entre superficies, de rojo (estrecho) a azul (ancho), o solo lo que no llega al mínimo, y dice cuál es el punto más estrecho de cada cuerpo.
 
-![Espesor de pared](img/espesor.png)
+![Espesor](img/espesor.png)
 
 Pieza de prueba con la escala de 0 a 4 mm: aletas de 0,4 a 3,2 mm (de naranja a azul claro), una aleta en cuña de 2,0 a 0,4 mm y un tubo de pared 0,8; las bases, de 3,2 y 4 mm, salen en azul claro y azul.
 
 | Campo | Qué hace |
 |---|---|
-| Cuerpos | *Todos los visibles* o *Elegidos*. Las superficies no se miden: no tienen espesor |
-| Espesor mínimo | Lo que no llega se cuenta en el resultado (área y ✖). Por ejemplo 0,8 mm, dos pasadas de una boquilla de 0,4 |
+| Medir | *Espesor* o *Espacio* |
+| Cuerpos | *Todos los visibles* o *Elegidos*. Las superficies no se miden. Con *Elegidos*, los espacios solo se miden entre ellos |
+| Espesor mínimo / Espacio mínimo | Lo que no llega se cuenta en el resultado (área y ✖). Por ejemplo 0,8 mm de pared, dos pasadas de una boquilla de 0,4. Cada medida guarda su propio valor |
 | Pintar | *Mapa de color* o *Solo lo que no llega al mínimo* (en rojo) |
-| Escala desde / hasta | Espesores del rojo y del azul en el mapa de color |
+| Escala desde / hasta | Medidas del rojo y del azul en el mapa de color. Cada medida guarda las suyas |
 | Resolución | Lado máximo de los triángulos con los que se mide: *Rápida (2 mm)*, *Normal (1 mm)* o *Fina (0,5 mm)* |
+| Ver a través | Pone los cuerpos medidos en transparencia mientras el diálogo está abierto, para ver lo que queda por dentro. Al cerrar vuelven a su opacidad, también con *Mantener al cerrar* |
 | Mantener al cerrar | La capa se queda al cerrar el diálogo hasta que cambie alguno de los cuerpos; entonces se quita y hay que volver a abrir el diálogo (fuera del diálogo no se puede recalcular). No se guarda en el archivo |
 
 En **Resultado** salen lo más fino (y de qué cuerpo), el área por debajo del espesor mínimo y, con varios cuerpos, los dos datos de cada uno.
 
-**Cómo mide:** desde el centro de cada triángulo lanza un rayo hacia dentro, perpendicular a la superficie, hasta la pared de enfrente. Fusion solo lanza rayos contra cuerpos de malla, así que en los sólidos crea uno temporal dentro de la vista previa y lo borra en seguida: no queda nada en el diseño ni en la línea de tiempo. No usa `PolygonMesh.wallThickness` de la API: mide por nodos y en las aristas curvas da casi 0 (0,03 mm en el canto de un tubo de 0,8).
+**Cómo mide el espesor:** desde el centro de cada triángulo lanza un rayo hacia dentro, perpendicular a la superficie, hasta la pared de enfrente. Fusion solo lanza rayos contra cuerpos de malla, así que en los sólidos crea uno temporal dentro de la vista previa y lo borra en seguida: no queda nada en el diseño ni en la línea de tiempo. No usa `PolygonMesh.wallThickness` de la API: mide por nodos y en las aristas curvas da casi 0 (0,03 mm en el canto de un tubo de 0,8).
 
 **Límites:**
 
 - El rayo que sale del canto de una pared la recorre a lo largo, no a lo ancho. Para corregirlo, cada triángulo toma el valor más fino de los que tocan con él en una arista convexa, así que el canto de una aleta de 0,4 sale de 0,4. En cantos anchos, de varias filas de triángulos, solo se corrige la primera fila: el centro puede salir más grueso de lo que es.
 - Las paredes curvas miden un poco menos por la malla (0,79 en un tubo de 0,8).
 - El texto grabado o en relieve tiene tabiques muy finos entre trazos y sale como lo más fino de la pieza. Es real: con una boquilla de 0,4 no se imprimen bien.
+
+### Medir el espacio
+
+Con **Medir: Espacio**, el rayo sale hacia fuera y mide el aire hasta lo que cada cara tiene delante: ranuras y agujeros estrechos del mismo cuerpo, u holguras con otro cuerpo.
+
+![Espacios entre superficies](img/espacios.png)
+
+Con **Ver a través** y la escala de 0 a 2 mm: el reborde de la tapa a 0,1 mm de la pared y el eje a 0,15 mm, en rojo anaranjado; la ranura de 0,25 y el pasador de la bisagra a 0,3, en naranja; un tetón metido 0,2 mm en la pared, en magenta.
+
+- Solo se pinta lo que entra en la escala. Lo que no tiene nada delante o queda más lejos no se pinta, aunque el resultado da el mínimo igualmente.
+- Las caras que se tocan (hasta 0,01 mm) no se pintan: se dan como área en contacto.
+- Los cuerpos que se solapan salen en magenta y se dan como **interferencia**, con los cuerpos implicados.
+- Hay 0,01 mm de margen con el espacio mínimo, porque es el error de la medida entre dos curvas: una holgura justa de 0,1 no se marca.
+- Lo estrecho suele estar por dentro y no se ve desde fuera: para eso está **Ver a través**. Una sección apenas ayuda: las paredes de una rendija estrecha quedan de canto y no se ven. Ocultar un cuerpo tampoco sirve: con *Todos los visibles* deja de medirse.
+- El rayo sale perpendicular a cada cara, así que una arista que pasa cerca de otra cara sin tenerla delante puede quedar sin medir: el mínimo real puede ser algo menor.
 
 ## Instalación
 

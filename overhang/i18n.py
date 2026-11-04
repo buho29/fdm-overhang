@@ -46,11 +46,30 @@ EN = {
         'The layer stays after closing the dialog and is recomputed whenever the model changes. '
         'To remove it, open the dialog again and uncheck this. It is not saved in the file.',
     # ------------------------------------------------ espesor de pared
-    'Espesor de pared': 'Wall thickness',
-    'Mapa de color del espesor de pared, de rojo (fino) a azul (grueso), o solo lo que no llega al '
-    'espesor mínimo. No modifica el diseño.':
-        'Colour map of the wall thickness, from red (thin) to blue (thick), or only what is below the '
-        'minimum thickness. The design is not modified.',
+    'Espesor y espacios': 'Thickness and gaps',
+    'Mapa de color del espesor de las paredes o del espacio entre superficies, de rojo (estrecho) a '
+    'azul (ancho), o solo lo que no llega al mínimo. No modifica el diseño.':
+        'Colour map of the wall thickness or of the gap between surfaces, from red (narrow) to blue (wide), '
+        'or only what is below the minimum. The design is not modified.',
+    'Medir': 'Measure',
+    'Ver a través': 'See through',
+    'Pone los cuerpos medidos en transparencia mientras el diálogo está abierto, para ver '
+    'lo que queda por dentro. Al cerrar vuelven a su opacidad.':
+        'Makes the measured bodies transparent while the dialog is open, to see what is inside. '
+        'They go back to their opacity when it is closed.',
+    'Espesor': 'Thickness',
+    'Espacio': 'Gap',
+    'Espesor: de cada pared hasta su otra cara. Espacio: de cada cara hasta lo que tiene '
+    'delante, sea del mismo cuerpo o de otro.':
+        'Thickness: from each wall to its other side. Gap: from each face to whatever is in front of it, '
+        'in the same body or in another one.',
+    'Espacio mínimo': 'Minimum gap',
+    'El espacio mínimo tiene que ser mayor que 0.': 'The minimum gap must be greater than 0.',
+    '%s Lo más estrecho: <b>%s mm</b> (%s)': '%s Narrowest: <b>%s mm</b> (%s)',
+    'Por debajo de %s mm: <b>%.0f mm²</b>': 'Below %s mm: <b>%.0f mm²</b>',
+    'Ninguna cara tiene otra enfrente.': 'No face has another one in front of it.',
+    'Caras en contacto: %.0f mm²': 'Faces in contact: %.0f mm²',
+    'Interferencia: <b>%.0f mm²</b> (%s)': 'Interference: <b>%.0f mm²</b> (%s)',
     'Espesor mínimo': 'Minimum thickness',
     'Pintar': 'Paint',
     'Mapa de color': 'Colour map',
@@ -74,7 +93,7 @@ EN = {
     'Por debajo de %s mm: <b>%.0f mm²</b> (%.1f %% de la superficie)':
         'Below %s mm: <b>%.0f mm²</b> (%.1f %% of the surface)',
     'Malla abierta, puede medir de más: %s': 'Open mesh, it may measure too much: %s',
-    'Espesor de pared: error': 'Wall thickness: error',
+    'Espesor y espacios: error': 'Thickness and gaps: error',
     'No hay cuerpos sólidos que medir.': 'There are no solid bodies to measure.',
     # ------------------------------------------------ resultado
     'Abre un diseño (espacio de trabajo DISEÑO).': 'Open a design (DESIGN workspace).',

@@ -1,7 +1,8 @@
 # Add-in de Fusion 360 con dos comandos en INSPECCIONAR:
 # - "Voladizos FDM": pinta encima del modelo, como la vista de soportes de un laminador, lo que mira hacia abajo
 #   con menos del ángulo límite desde la horizontal (rojo -> naranja) y lo que apoya en la cama (verde).
-# - "Espesor de pared": mapa de color del espesor (rojo fino -> azul grueso) o solo lo que no llega al mínimo.
+# - "Espesor y espacios": mapa de color del espesor de las paredes o del espacio entre superficies (rojo lo
+#   estrecho -> azul lo ancho), o solo lo que no llega al mínimo.
 # Son gráficos personalizados: no tocan el diseño ni la línea de tiempo y se borran al cerrar el diálogo.
 import importlib
 import json
@@ -43,6 +44,11 @@ BEDS = [('z', 'Plano XY (Z arriba)'), ('y', 'Plano XZ (Y arriba)'), ('face', 'Ca
 RESOLUTIONS = [('coarse', 'Rápida (2 mm)', 0.2), ('normal', 'Normal (1 mm)', 0.1), ('fine', 'Fina (0,5 mm)', 0.05)]
 PAINTS = [('map', 'Mapa de color'), ('thin', 'Solo lo que no llega al mínimo')]
 TH_SURFACE_TOL = 0.002   # cm: desviación de la malla del espesor respecto a la superficie
+GAP_SURFACE_TOL = 0.0005  # cm: más fina, porque se miden holguras de décimas entre dos superficies curvas
+GAP_BACK = 0.001          # cm: hasta 0,01 mm de separación o de solape cuenta como que dos caras se tocan
+GAP_MARGIN = 2 * GAP_SURFACE_TOL   # cm: error de la medida entre dos curvas, una holgura justa no es fallo
+MODES = [('thickness', 'Espesor'), ('gap', 'Espacio')]
+XRAY_OPACITY = 0.25
 QUALITIES = [('low', 'Baja', adsk.fusion.TriangleMeshQualityOptions.LowQualityTriangleMesh),
              ('normal', 'Normal', adsk.fusion.TriangleMeshQualityOptions.NormalQualityTriangleMesh),
              ('high', 'Alta', adsk.fusion.TriangleMeshQualityOptions.HighQualityTriangleMesh)]
@@ -55,6 +61,7 @@ _meshes = {}    # (entityToken, calidad) -> malla en coordenadas del raíz; se v
 _keep = {}      # capa que queda al cerrar: 'design', 'settings', 'bodies', 'face'. Solo en memoria
 _th_state = {}  # lo mismo para el espesor de pared
 _th_meshes = {}
+_gap_cache = {}  # (cuerpos, resolución) -> medida de todos juntos, porque cada uno depende de los demás
 _th_keep = {}   # 'design', 'layers', 'sig': la capa de espesor que queda al cerrar (no se puede recalcular fuera)
 
 
@@ -71,7 +78,8 @@ def _load_settings():
     s = {'bodies': 'visible', 'bed': _default_bed(), 'own_bed': False, 'angle': 45, 'gradient': True,
          'quality': 'normal', 'keep': False,
          'th_bodies': 'visible', 'th_res': 'normal', 'th_paint': 'map', 'th_limit': 0.8, 'th_lo': 0.0,
-         'th_hi': 4.0, 'th_keep': False}
+         'th_hi': 4.0, 'th_keep': False, 'th_mode': 'thickness', 'gap_limit': 0.1, 'gap_lo': 0.0, 'gap_hi': 2.0,
+         'th_xray': True}
     try:
         with open(SETTINGS, encoding='utf-8') as f:
             s.update(json.load(f))
@@ -416,7 +424,11 @@ def _th_read(inputs):
             'th_paint': _choice(inputs, 'th_paint', PAINTS),
             'th_limit': round(inputs.itemById('th_limit').value * 10, 4),   # mm
             'th_lo': round(inputs.itemById('th_lo').value * 10, 4), 'th_hi': round(inputs.itemById('th_hi').value * 10, 4),
-            'th_keep': inputs.itemById('th_keep').value}
+            'th_keep': inputs.itemById('th_keep').value, 'th_mode': _choice(inputs, 'th_mode', MODES),
+            'th_xray': inputs.itemById('th_xray').value,
+            'gap_limit': round(inputs.itemById('gap_limit').value * 10, 4),
+            'gap_lo': round(inputs.itemById('gap_lo').value * 10, 4),
+            'gap_hi': round(inputs.itemById('gap_hi').value * 10, 4)}
 
 
 def _th_cast(mesh_body, coords, indices):
@@ -437,31 +449,44 @@ def _th_cast(mesh_body, coords, indices):
     return out
 
 
-def _th_solid(native, coords, indices):
-    """Espesor de los triángulos de un cuerpo sólido. Los rayos solo se pueden lanzar contra cuerpos de malla,
-    así que se crea uno temporal con la misma malla y se borra en seguida (dentro de la vista previa, Fusion
-    lo desharía igualmente)."""
-    design = adsk.fusion.Design.cast(native.parentComponent.parentDesign)
+def _temp_meshes(design, meshes):
+    """Crea cuerpos de malla temporales: los rayos solo se pueden lanzar contra cuerpos de malla. Devuelve los
+    objetos creados, el último es la operación base si la hay; se borran con _drop_temp (dentro de la vista
+    previa, Fusion los desharía igualmente)."""
     root = design.rootComponent
     base = None
     if design.designType == adsk.fusion.DesignTypes.ParametricDesignType:
         base = root.features.baseFeatures.add()
         base.startEdit()
+    tmps = []
     try:
-        tmp = root.meshBodies.addByTriangleMeshData(coords, indices, [], [])
+        for coords, indices in meshes:
+            tmp = root.meshBodies.addByTriangleMeshData(coords, indices, [], [])
+            tmp.isLightBulbOn = False
+            tmps.append(tmp)
     finally:
         if base:
             base.finishEdit()
+    return tmps + ([base] if base else [])
+
+
+def _drop_temp(objs):
+    for obj in objs:   # borrar la base no borra los cuerpos de malla: ella va la última
+        try:
+            if obj and obj.isValid:
+                obj.deleteMe()
+        except Exception:
+            pass
+
+
+def _th_solid(native, coords, indices):
+    """Espesor de los triángulos de un cuerpo sólido, con una copia temporal en malla."""
+    design = adsk.fusion.Design.cast(native.parentComponent.parentDesign)
+    objs = _temp_meshes(design, [(coords, indices)])
     try:
-        tmp.isLightBulbOn = False
-        return _th_cast(tmp, coords, indices)
+        return _th_cast(objs[0], coords, indices)
     finally:
-        for obj in (tmp, base):   # borrar la base no borra el cuerpo de malla
-            try:
-                if obj and obj.isValid:
-                    obj.deleteMe()
-            except Exception:
-                pass
+        _drop_temp(objs)
 
 
 def _th_mesh(body, res):
@@ -493,11 +518,11 @@ def _th_mesh(body, res):
     return _th_meshes[key]
 
 
-def _th_legend(s):
+def _th_legend(s, prefix='th_'):
     sq = '<font color="#%02x%02x%02x">■</font>'
     if s['th_paint'] == 'thin':
-        return '%s %s' % (sq % T.THIN[:3], tr('menos de %s mm') % _mm(s['th_limit']))
-    lo, hi = s['th_lo'], s['th_hi']
+        return '%s %s' % (sq % T.THIN[:3], tr('menos de %s mm') % _mm(s[prefix + 'limit']))
+    lo, hi = s[prefix + 'lo'], s[prefix + 'hi']
     steps = [lo + (hi - lo) * k / 4.0 for k in range(5)]
     return ' '.join('%s %s' % (sq % T.color(v, lo, hi)[:3], _mm(v)) for v in steps) + ' mm'
 
@@ -518,6 +543,126 @@ def _th_signature(bodies):
     return sig
 
 
+def _gap_mesh(body, res):
+    """(coords, normales, índices, malla cerrada, separación de la capa) del cuerpo en coordenadas del raíz."""
+    native = body.nativeObject or body
+    mesh_body = adsk.fusion.MeshBody.cast(native)
+    if mesh_body:
+        pm = mesh_body.mesh
+        coords, idx = list(pm.nodeCoordinatesAsDouble), list(pm.triangleNodeIndices)
+        normals = list(pm.normalVectorsAsDouble)
+        if len(normals) != len(coords):
+            normals = T.vertex_normals(coords, idx)
+        closed, lift = mesh_body.isClosed, A.lift(0.0, 0.0)
+    else:
+        calc = native.meshManager.createMeshCalculator()
+        calc.maxSideLength = dict((k, v) for k, _, v in RESOLUTIONS)[res]
+        calc.surfaceTolerance = GAP_SURFACE_TOL
+        m = calc.calculate()
+        coords, normals, idx = list(m.nodeCoordinatesAsDouble), list(m.normalVectorsAsDouble), list(m.nodeIndices)
+        closed, lift = True, A.lift(GAP_SURFACE_TOL, _display_tolerance(native))
+    if body.assemblyContext:
+        coords, normals = A.transform(coords, normals, body.assemblyContext.transform2.asArray())
+    return coords, normals, idx, closed, lift
+
+
+def _gap_measure(design, bodies, res):
+    """Lo que tiene delante cada triángulo de cada cuerpo: su propio cuerpo u otro. Cada cuerpo se mira por
+    separado para poder distinguir el espacio del contacto y del solape. Se guarda mientras dure el diálogo."""
+    key = (tuple(b.entityToken for b in bodies), res)
+    if key in _gap_cache:
+        return _gap_cache[key]
+    P, V = adsk.core.Point3D.create, adsk.core.Vector3D.create
+    meshes = [_gap_mesh(b, res) for b in bodies]
+    boxes = []
+    for m in meshes:
+        xyz = [m[0][i::3] for i in range(3)]
+        boxes.append((tuple(min(v) for v in xyz), tuple(max(v) for v in xyz)))
+    objs = _temp_meshes(design, [(m[0], m[2]) for m in meshes])
+    results = []
+    try:
+        for i, m in enumerate(meshes):
+            vals, kinds, who = [], [], []
+            for ray in T.rays(m[0], m[2], outward=True):
+                if not ray:
+                    vals.append(T.NO_HIT), kinds.append(T.GAP), who.append(-1)
+                    continue
+                o, d = ray
+                vec = V(*d)
+                org = P(*o)
+                own = None
+                for hit in objs[i].calculateCollisionsWithRay(org, vec):
+                    dist = org.distanceTo(hit)
+                    if dist > 1e-5:
+                        own = dist
+                        break
+                others = []
+                p = (o[0] - GAP_BACK * d[0], o[1] - GAP_BACK * d[1], o[2] - GAP_BACK * d[2])
+                back = P(*p)
+                for j in range(len(meshes)):
+                    if j != i and T.ray_box(p, d, *boxes[j]):
+                        hits = [back.distanceTo(h) for h in objs[j].calculateCollisionsWithRay(back, vec)]
+                        kind, dist = T.classify_other(hits, GAP_BACK, meshes[j][3])
+                        others.append((kind, dist, j))
+                kind, dist, j = T.combine(own, others)
+                vals.append(dist), kinds.append(kind), who.append(j)
+            results.append((vals, kinds, who))
+    finally:
+        _drop_temp(objs)
+    _gap_cache[key] = (meshes, results)
+    return _gap_cache[key]
+
+
+def _gap_analyse(design, s, bodies):
+    """(html del resultado, capas, cuerpos analizados) midiendo el espacio delante de cada cara."""
+    if s['gap_limit'] <= 0:
+        return tr('El espacio mínimo tiene que ser mayor que 0.'), [], bodies
+    if s['th_paint'] == 'map' and s['gap_hi'] <= s['gap_lo']:
+        return tr('El final de la escala tiene que ser mayor que el principio.'), [], bodies
+    t0 = time.time()
+    lo, hi, limit = s['gap_lo'] / 10.0, s['gap_hi'] / 10.0, s['gap_limit'] / 10.0   # cm
+    meshes, results = _gap_measure(design, bodies, s['th_res'])
+    layers, rows, overlaps = [], [], set()
+    thin = contact = overlap = 0.0
+    tris = 0
+    for i, (m, (vals, kinds, who)) in enumerate(zip(meshes, results)):
+        c, n, idx, _, lift = m
+        tc, tn, tcol, st = T.colorize_gaps(c, n, idx, vals, kinds, lo, hi, limit, s['th_paint'] == 'thin', GAP_MARGIN)
+        tris += len(idx) // 3
+        thin, contact, overlap = thin + st['thin'], contact + st['contact'], overlap + st['overlap']
+        overlaps |= set(tuple(sorted((bodies[i].name, bodies[j].name))) for k, j in zip(kinds, who) if k == T.OVERLAP)
+        if st['min'] is not None:
+            j = who[st['tri']]
+            where = bodies[i].name if j < 0 else ' ↔ '.join(sorted((bodies[i].name, bodies[j].name)))
+            rows.append((st['min'], where, st['thin'], bodies[i].name))
+        if tc:
+            layers.append((A.offset(tc, tn, lift), tn, tcol))
+
+    lines = [_th_legend(s, 'gap_'), '']
+    if rows:
+        rows.sort()
+        wmin, where = rows[0][:2]
+        state = ('<font color="#d33">✖</font>' if wmin < limit - GAP_MARGIN or overlap
+                 else '<font color="#3a3">✔</font>')
+        lines.append(tr('%s Lo más estrecho: <b>%s mm</b> (%s)') % (state, _mm(wmin * 10), where))
+        lines.append(tr('Por debajo de %s mm: <b>%.0f mm²</b>') % (_mm(s['gap_limit']), thin * 100))
+        if len(rows) > 1:
+            lines += ['&nbsp; • %s: %s mm, %.0f mm²' % (nm, _mm(w * 10), a * 100)
+                      for w, _, a, nm in sorted(rows, key=lambda r: r[3])]
+    elif not (contact or overlap):
+        lines.append(tr('Ninguna cara tiene otra enfrente.'))
+    if contact:
+        lines.append(tr('Caras en contacto: %.0f mm²') % (contact * 100))
+    if overlap:
+        sq = '<font color="#%02x%02x%02x">■</font>' % T.OVERLAP_COLOR[:3]
+        pairs = ', '.join(' ↔ '.join(p) for p in sorted(overlaps))
+        lines.append('%s %s' % (sq, tr('Interferencia: <b>%.0f mm²</b> (%s)') % (overlap * 100, pairs)))
+    lines.append('<font color="#888">%s</font>' % (tr('%d triángulos en %.2f s') % (tris, time.time() - t0)))
+    _th_state['result'] = {'mode': 'gap', 'min': rows[0][0] * 10 if rows else None, 'where': rows[0][1] if rows else None,
+                           'thin': thin * 100, 'contact': contact * 100, 'overlap': overlap * 100}
+    return '<br>'.join(lines), layers, bodies
+
+
 def _th_analyse(design, s, picked):
     """(html del resultado, capas, cuerpos analizados)."""
     if not design:
@@ -532,6 +677,8 @@ def _th_analyse(design, s, picked):
     bodies = [b for b in bodies if adsk.fusion.MeshBody.cast(b) or getattr(b, 'isSolid', False)]
     if not bodies:
         return tr('No hay cuerpos sólidos que medir.'), [], []
+    if s['th_mode'] == 'gap':
+        return _gap_analyse(design, s, bodies)
     if s['th_limit'] <= 0:
         return tr('El espesor mínimo tiene que ser mayor que 0.'), [], bodies
     if s['th_paint'] == 'map' and s['th_hi'] <= s['th_lo']:
@@ -592,6 +739,10 @@ def _th_draw(inputs):
         inputs.itemById('th_info').formattedText = html
     if design:
         _paint(design, layers, TH_GROUP_ID)
+        if _th_state.get('last') and _th_state['last']['settings']['th_xray']:
+            # dentro de la vista previa: Fusion devuelve la opacidad de cada cuerpo al cambiar un campo y al cerrar
+            for b in bodies:
+                b.opacity = XRAY_OPACITY
     _app.activeViewport.refresh()
 
 
@@ -603,8 +754,13 @@ def _th_drop_keep():
 def _th_update_visibility(inputs):
     inputs.itemById('th_body_sel').isVisible = _choice(inputs, 'th_bodies', BODIES) == 'pick'
     is_map = _choice(inputs, 'th_paint', PAINTS) == 'map'
-    inputs.itemById('th_lo').isVisible = is_map
-    inputs.itemById('th_hi').isVisible = is_map
+    is_gap = _choice(inputs, 'th_mode', MODES) == 'gap'
+    inputs.itemById('th_limit').isVisible = not is_gap
+    inputs.itemById('th_lo').isVisible = is_map and not is_gap
+    inputs.itemById('th_hi').isVisible = is_map and not is_gap
+    inputs.itemById('gap_limit').isVisible = is_gap
+    inputs.itemById('gap_lo').isVisible = is_map and is_gap
+    inputs.itemById('gap_hi').isVisible = is_map and is_gap
 
 
 class _ThCreatedHandler(adsk.core.CommandCreatedEventHandler):
@@ -621,6 +777,11 @@ class _ThCreatedHandler(adsk.core.CommandCreatedEventHandler):
             s = _load_settings()
             VS = adsk.core.ValueInput.createByString
 
+            dd = inputs.addDropDownCommandInput('th_mode', tr('Medir'), adsk.core.DropDownStyles.TextListDropDownStyle)
+            for key, label in MODES:
+                dd.listItems.add(tr(label), key == s['th_mode'])
+            dd.tooltip = tr('Espesor: de cada pared hasta su otra cara. Espacio: de cada cara hasta lo que tiene '
+                            'delante, sea del mismo cuerpo o de otro.')
             dd = inputs.addDropDownCommandInput('th_bodies', tr('Cuerpos'), adsk.core.DropDownStyles.TextListDropDownStyle)
             for key, label in BODIES:
                 dd.listItems.add(tr(label), key == s['th_bodies'])
@@ -629,15 +790,21 @@ class _ThCreatedHandler(adsk.core.CommandCreatedEventHandler):
                 sel.addSelectionFilter(f)
             sel.setSelectionLimits(0, 0)
             inputs.addValueInput('th_limit', tr('Espesor mínimo'), 'mm', VS('%s mm' % s['th_limit']))
+            inputs.addValueInput('gap_limit', tr('Espacio mínimo'), 'mm', VS('%s mm' % s['gap_limit']))
             dd = inputs.addDropDownCommandInput('th_paint', tr('Pintar'), adsk.core.DropDownStyles.TextListDropDownStyle)
             for key, label in PAINTS:
                 dd.listItems.add(tr(label), key == s['th_paint'])
             inputs.addValueInput('th_lo', tr('Escala desde'), 'mm', VS('%s mm' % s['th_lo']))
             inputs.addValueInput('th_hi', tr('Escala hasta'), 'mm', VS('%s mm' % s['th_hi']))
+            inputs.addValueInput('gap_lo', tr('Escala desde'), 'mm', VS('%s mm' % s['gap_lo']))
+            inputs.addValueInput('gap_hi', tr('Escala hasta'), 'mm', VS('%s mm' % s['gap_hi']))
             dd = inputs.addDropDownCommandInput('th_res', tr('Resolución'), adsk.core.DropDownStyles.TextListDropDownStyle)
             for key, label, _ in RESOLUTIONS:
                 dd.listItems.add(tr(label), key == s['th_res'])
             dd.tooltip = tr('Lado máximo de los triángulos con los que se mide. Más fina, más detalle y más lento.')
+            xray = inputs.addBoolValueInput('th_xray', tr('Ver a través'), True, '', bool(s['th_xray']))
+            xray.tooltip = tr('Pone los cuerpos medidos en transparencia mientras el diálogo está abierto, para ver '
+                              'lo que queda por dentro. Al cerrar vuelven a su opacidad.')
             keep = inputs.addBoolValueInput('th_keep', tr('Mantener al cerrar'), True, '', bool(s['th_keep']))
             keep.tooltip = tr('La capa se queda al cerrar el diálogo, hasta que cambie alguno de los cuerpos: '
                               'entonces se quita y hay que volver a abrir el diálogo. No se guarda en el archivo.')
@@ -649,7 +816,7 @@ class _ThCreatedHandler(adsk.core.CommandCreatedEventHandler):
                 ev.add(h)
                 _handlers.append(h)
         except Exception:
-            _ui.messageBox(tr('Espesor de pared: error') + '\n' + traceback.format_exc())
+            _ui.messageBox(tr('Espesor y espacios: error') + '\n' + traceback.format_exc())
 
 
 class _ThPreviewHandler(adsk.core.CommandEventHandler):
@@ -674,6 +841,7 @@ class _ThDestroyHandler(adsk.core.CommandEventHandler):
                 return   # se ha vuelto a pulsar el botón con el diálogo abierto: el nuevo ya está en marcha
             _clear(TH_GROUP_ID)
             _th_meshes.clear()
+            _gap_cache.clear()
             _th_state.pop('cmd', None)
             _th_state.pop('html', None)
             last = _th_state.pop('last', None)
@@ -743,9 +911,9 @@ def run(context):
         if th_def:
             th_def.deleteMe()
         th_def = _ui.commandDefinitions.addButtonDefinition(
-            TH_CMD_ID, tr('Espesor de pared'),
-            tr('Mapa de color del espesor de pared, de rojo (fino) a azul (grueso), o solo lo que no llega al '
-               'espesor mínimo. No modifica el diseño.'),
+            TH_CMD_ID, tr('Espesor y espacios'),
+            tr('Mapa de color del espesor de las paredes o del espacio entre superficies, de rojo (estrecho) a '
+               'azul (ancho), o solo lo que no llega al mínimo. No modifica el diseño.'),
             os.path.join(HERE, 'resources', 'thickness'))
         h = _ThCreatedHandler()
         th_def.commandCreated.add(h)

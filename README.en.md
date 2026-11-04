@@ -9,7 +9,7 @@ Paints over the model what will need support, like a slicer's support preview:
 
 The design is not modified: these are custom graphics, they don't go into the timeline and they disappear when the dialog is closed.
 
-It is in **DESIGN > INSPECT > FDM overhangs**. The same panel has a second button, [Wall thickness](#wall-thickness), which paints the wall thickness.
+It is in **DESIGN > INSPECT > FDM overhangs**. The same panel has a second button, [Thickness and gaps](#thickness-and-gaps), which paints the wall thickness or the gap between surfaces.
 
 ![Overhangs at 45°](img/ejemplo.png)
 
@@ -35,32 +35,49 @@ A real part seen from below and cut with a section analysis, with the limit at 3
 
 Faces exactly at the limit (a teardrop or a chamfer at exactly 45° with the limit at 45°) are not marked: there is a half-degree margin.
 
-## Wall thickness
+## Thickness and gaps
 
-Second button, in **DESIGN > INSPECT > Wall thickness**. Paints the wall thickness from red (thin) to blue (thick), or only what is below the minimum thickness, and gives the thinnest point of each body.
+Second button, in **DESIGN > INSPECT > Thickness and gaps**. Paints the wall thickness or the gap between surfaces, from red (narrow) to blue (wide), or only what is below the minimum, and gives the narrowest point of each body.
 
-![Wall thickness](img/espesor.png)
+![Thickness](img/espesor.png)
 
 Test part with the scale from 0 to 4 mm: fins from 0.4 to 3.2 mm (orange to light blue), a wedge fin from 2.0 to 0.4 mm and a tube with a 0.8 wall; the 3.2 and 4 mm bases are light blue and blue.
 
 | Field | What it does |
 |---|---|
-| Bodies | *All visible* or *Selected*. Surfaces are not measured: they have no thickness |
-| Minimum thickness | What is below it is counted in the result (area and ✖). For example 0.8 mm, two lines of a 0.4 nozzle |
+| Measure | *Thickness* or *Gap* |
+| Bodies | *All visible* or *Selected*. Surfaces are not measured. With *Selected*, gaps are only measured between them |
+| Minimum thickness / Minimum gap | What is below it is counted in the result (area and ✖). For example a 0.8 mm wall, two lines of a 0.4 nozzle. Each measure keeps its own value |
 | Paint | *Colour map* or *Only what is below the minimum* (in red) |
-| Scale from / to | Thicknesses of the red and the blue in the colour map |
+| Scale from / to | Values of the red and the blue in the colour map. Each measure keeps its own |
 | Resolution | Maximum side of the triangles used to measure: *Fast (2 mm)*, *Normal (1 mm)* or *Fine (0.5 mm)* |
+| See through | Makes the measured bodies transparent while the dialog is open, to see what is inside. They go back to their opacity when it is closed, also with *Keep when closed* |
 | Keep when closed | The layer stays after closing the dialog until one of the bodies changes; then it is removed and the dialog has to be opened again (it cannot be recomputed outside the dialog). It is not saved in the file |
 
 **Result** shows the thinnest point (and its body), the area below the minimum thickness and, with several bodies, both values for each.
 
-**How it measures:** from the centre of each triangle it casts a ray inwards, perpendicular to the surface, up to the opposite wall. Fusion only casts rays against mesh bodies, so for solids it creates a temporary one inside the preview and deletes it at once: nothing is left in the design or the timeline. It does not use the API's `PolygonMesh.wallThickness`: it measures per node and gives almost 0 on curved edges (0.03 mm on the rim of a 0.8 tube).
+**How it measures thickness:** from the centre of each triangle it casts a ray inwards, perpendicular to the surface, up to the opposite wall. Fusion only casts rays against mesh bodies, so for solids it creates a temporary one inside the preview and deletes it at once: nothing is left in the design or the timeline. It does not use the API's `PolygonMesh.wallThickness`: it measures per node and gives almost 0 on curved edges (0.03 mm on the rim of a 0.8 tube).
 
 **Limits:**
 
 - The ray cast from the edge face of a wall runs along it, not across it. To correct it, each triangle takes the thinnest value of those it touches along a convex edge, so the edge of a 0.4 fin comes out as 0.4. On wide edge faces, several rows of triangles across, only the first row is corrected: the middle can come out thicker than it is.
 - Curved walls measure a little less because of the mesh (0.79 on a 0.8 tube).
 - Engraved or embossed text has very thin ridges between strokes and comes out as the thinnest part of the piece. That is real: they do not print well with a 0.4 nozzle.
+
+### Measuring the gap
+
+With **Measure: Gap**, the ray goes outwards and measures the air up to whatever each face has in front of it: narrow slots and holes in the same body, or clearances with another body.
+
+![Gaps between surfaces](img/espacios.png)
+
+With **See through** and the scale from 0 to 2 mm: the lid lip 0.1 mm from the wall and the shaft at 0.15 mm, in reddish orange; the 0.25 slot and the hinge pin at 0.3, in orange; a stud going 0.2 mm into the wall, in magenta.
+
+- Only what fits in the scale is painted. Faces with nothing in front of them or further away are not painted, although the result still gives the minimum.
+- Faces that touch (up to 0.01 mm) are not painted: they are given as the area in contact.
+- Overlapping bodies are magenta and are given as **interference**, with the bodies involved.
+- There is a 0.01 mm margin with the minimum gap, which is the measuring error between two curves: an exact 0.1 clearance is not marked.
+- Narrow gaps are usually inside and cannot be seen from outside: that is what **See through** is for. A section barely helps: the walls of a narrow slit are edge-on and cannot be seen. Hiding a body does not work either: with *All visible* it is no longer measured.
+- The ray leaves each face perpendicularly, so an edge passing close to another face without having it in front may go unmeasured: the real minimum may be somewhat smaller.
 
 ## Installation
 

@@ -13,7 +13,7 @@ Install (Windows)
 3. In Fusion 360: Utilities > Add-Ins (Shift+S) > FDMOverhang > Run,
    and tick "Run on Startup" so it always starts.
 
-The buttons are in DESIGN > INSPECT > FDM overhangs and Wall thickness.
+The buttons are in DESIGN > INSPECT > FDM overhangs and Thickness and gaps.
 The add-in is in Spanish if Fusion is in Spanish, and in English otherwise.
 
 To update to a new version, run its instalar.bat: the last dialog values

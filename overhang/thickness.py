@@ -13,6 +13,10 @@ EPS = 1e-3      # margen relativo al comparar con el mínimo
 STOPS = [(0.0, (220, 30, 30)), (0.25, (240, 220, 0)), (0.5, (60, 200, 60)), (0.75, (0, 190, 230)),
          (1.0, (30, 60, 230))]
 THIN = (220, 30, 30, 255)   # con "solo lo fino": todo lo que no llega al mínimo, en rojo
+OVERLAP_COLOR = (200, 0, 200, 255)   # dos cuerpos ocupan el mismo sitio
+
+# Qué tiene delante cada triángulo al medir espacios
+GAP, CONTACT, OVERLAP = 0, 1, 2
 
 
 def _tri(coords, indices, t):
@@ -25,9 +29,10 @@ def _tri(coords, indices, t):
     return (a, b, d), cr, 0.5 * math.sqrt(cr[0] * cr[0] + cr[1] * cr[1] + cr[2] * cr[2])
 
 
-def rays(coords, indices):
-    """Un rayo por triángulo: (origen = centro, dirección = normal hacia dentro, unitaria). Los triángulos
-    degenerados dan None."""
+def rays(coords, indices, outward=False):
+    """Un rayo por triángulo: (origen = centro, dirección unitaria según la normal: hacia dentro para medir
+    espesor, hacia fuera para medir espacio). Los triángulos degenerados dan None."""
+    sign = 1.0 if outward else -1.0
     out = []
     c = coords
     for t in range(0, len(indices) - 2, 3):
@@ -37,7 +42,7 @@ def rays(coords, indices):
             continue
         ln = 2 * area
         o = ((c[a] + c[b] + c[d]) / 3.0, (c[a + 1] + c[b + 1] + c[d + 1]) / 3.0, (c[a + 2] + c[b + 2] + c[d + 2]) / 3.0)
-        out.append((o, (-cr[0] / ln, -cr[1] / ln, -cr[2] / ln)))
+        out.append((o, (sign * cr[0] / ln, sign * cr[1] / ln, sign * cr[2] / ln)))
     return out
 
 
@@ -149,3 +154,97 @@ def convex_min(coords, indices, tri_vals, min_angle=30.0, digits=5):
                 w = min(tri_vals[p], tri_vals[q])
                 out[p], out[q] = min(out[p], w), min(out[q], w)
     return out
+
+
+def ray_box(o, d, bmin, bmax):
+    """El rayo (semirrecta) toca la caja? Sirve para no preguntar a Fusion por los cuerpos que quedan lejos."""
+    t0, t1 = 0.0, float('inf')
+    for i in range(3):
+        if abs(d[i]) < 1e-12:
+            if o[i] < bmin[i] or o[i] > bmax[i]:
+                return False
+            continue
+        a, b = (bmin[i] - o[i]) / d[i], (bmax[i] - o[i]) / d[i]
+        if a > b:
+            a, b = b, a
+        t0, t1 = max(t0, a), min(t1, b)
+        if t0 > t1:
+            return False
+    return True
+
+
+def classify_other(hits, back, closed=True):
+    """Qué es otro cuerpo para un triángulo, a partir de las distancias a sus choques medidas desde un punto
+    'back' por detrás de la cara (dentro de su propio cuerpo). Devuelve (tipo, distancia desde la cara o None):
+    - un número impar de choques: ese punto está dentro del otro cuerpo, se solapan (OVERLAP);
+    - el primer choque a 'back' o menos de la cara: se tocan (CONTACT);
+    - si no, el espacio hasta él (GAP), o None si no hay nada delante.
+    Se empieza por detrás porque desde la propia cara no se distingue tocar de solapar."""
+    uniq = []
+    for h in sorted(hits):
+        if not uniq or h - uniq[-1] > 1e-6:   # un rayo que pasa por una arista choca con dos triángulos
+            uniq.append(h)
+    if closed and len(uniq) % 2:
+        return OVERLAP, 0.0
+    if not uniq:
+        return GAP, None
+    d = uniq[0] - back
+    return (CONTACT, 0.0) if d <= back else (GAP, d)
+
+
+def combine(own, others):
+    """Resultado de un triángulo: (tipo, espacio o NO_HIT, cuerpo de enfrente o -1 si es el suyo).
+    own es la distancia a su propio cuerpo o None; others, (tipo, distancia o None, cuerpo) de los demás.
+    Solaparse manda sobre tocarse y tocarse sobre cualquier espacio."""
+    for want in (OVERLAP, CONTACT):
+        for kind, _, j in others:
+            if kind == want:
+                return want, 0.0, j
+    best, who = (own, -1) if own is not None else (NO_HIT, -1)
+    for _, d, j in others:
+        if d is not None and d < best:
+            best, who = d, j
+    return GAP, best, who
+
+
+def colorize_gaps(coords, normals, indices, vals, kinds, lo, hi, limit, only_thin=False, margin=0.0):
+    """Colorea la malla según el espacio que tiene delante cada triángulo. No se pinta lo que no tiene nada
+    delante, lo que toca a otro cuerpo ni lo que supera hi: el mapa es para ver lo estrecho, y lo lejano solo
+    tapa. Lo que se solapa va siempre en OVERLAP_COLOR. Solo cuenta como por debajo
+    de limit lo que baja más que 'margin', el error de la malla (0,0999 en una holgura de 0,1 entre curvas).
+    Devuelve (coords, normals, colors, stats), con stats = {'min': espacio más estrecho o None,
+    'tri': triángulo donde está, 'thin': área por debajo de limit, 'contact', 'overlap': áreas}."""
+    measured = [w if k == GAP and w < NO_HIT else None for w, k in zip(vals, kinds)]
+    acc, cnt = [0.0] * (len(coords) // 3), [0] * (len(coords) // 3)
+    for t, w in enumerate(measured):
+        if w is not None and w <= hi:
+            for k in indices[3 * t:3 * t + 3]:
+                acc[k] += w
+                cnt[k] += 1
+    out_c, out_n, out_col = [], [], []
+    vmin, where, thin, contact, overlap = None, None, 0.0, 0.0, 0.0
+    c = coords
+    for t, w in enumerate(measured):
+        (a, b, d), _, area = _tri(coords, indices, 3 * t)
+        if kinds[t] == CONTACT:
+            contact += area
+            continue
+        if kinds[t] == OVERLAP:
+            overlap += area
+            cols = (OVERLAP_COLOR,) * 3
+        elif w is None:
+            continue
+        else:
+            if vmin is None or w < vmin:
+                vmin, where = w, t
+            below = w < limit - max(EPS * limit, margin)
+            if below:
+                thin += area
+            elif only_thin or w > hi:
+                continue
+            cols = (THIN,) * 3 if only_thin else tuple(color(acc[p // 3] / cnt[p // 3], lo, hi) for p in (a, b, d))
+        for p, col in zip((a, b, d), cols):
+            out_c += c[p:p + 3]
+            out_n += normals[p:p + 3]
+            out_col += col
+    return out_c, out_n, out_col, {'min': vmin, 'tri': where, 'thin': thin, 'contact': contact, 'overlap': overlap}
