@@ -99,6 +99,8 @@ EN = {
         'The layer stays after closing the dialog until one of the bodies changes: then it is removed and '
         'the dialog has to be opened again. It is not saved in the file.',
     'menos de %s mm': 'below %s mm',
+    'en contacto': 'in contact',
+    'interferencia': 'interference',
     'El espesor mínimo tiene que ser mayor que 0.': 'The minimum thickness must be greater than 0.',
     'El final de la escala tiene que ser mayor que el principio.': 'The end of the scale must be greater than its start.',
     '%s Lo más fino: <b>%s mm</b> (%s)': '%s Thinnest: <b>%s mm</b> (%s)',

@@ -15,6 +15,7 @@ STOPS = [(0.0, (220, 30, 30)), (0.25, (240, 220, 0)), (0.5, (60, 200, 60)), (0.7
          (1.0, (30, 60, 230))]
 THIN = (220, 30, 30, 255)   # con "solo lo fino": todo lo que no llega al mínimo, en rojo
 OVERLAP_COLOR = (200, 0, 200, 255)   # dos cuerpos ocupan el mismo sitio
+CONTACT_COLOR = (255, 255, 255, 255)   # dos cuerpos se tocan: blanco, el único color vivo que no está en la escala
 
 # Qué tiene delante cada triángulo al medir espacios
 GAP, CONTACT, OVERLAP = 0, 1, 2
@@ -319,8 +320,8 @@ def combine(own, others):
 
 def colorize_gaps(coords, normals, indices, vals, kinds, lo, hi, limit, only_thin=False, margin=0.0):
     """Colorea la malla según el espacio que tiene delante cada triángulo. No se pinta lo que no tiene nada
-    delante, lo que toca a otro cuerpo ni lo que supera hi: el mapa es para ver lo estrecho, y lo lejano solo
-    tapa. Lo que se solapa va siempre en OVERLAP_COLOR. Solo cuenta como por debajo
+    delante ni lo que supera hi: el mapa es para ver lo estrecho, y lo lejano solo tapa. Lo que toca a otro cuerpo
+    va siempre en CONTACT_COLOR y lo que se solapa, en OVERLAP_COLOR. Solo cuenta como por debajo
     de limit lo que baja más que 'margin', el error de la malla (0,0999 en una holgura de 0,1 entre curvas).
     Devuelve (coords, normals, colors, stats), con stats = {'min': espacio más estrecho o None,
     'tri': triángulo donde está, 'thin': área por debajo de limit, 'contact', 'overlap': áreas}."""
@@ -338,8 +339,8 @@ def colorize_gaps(coords, normals, indices, vals, kinds, lo, hi, limit, only_thi
         (a, b, d), _, area = _tri(coords, indices, 3 * t)
         if kinds[t] == CONTACT:
             contact += area
-            continue
-        if kinds[t] == OVERLAP:
+            cols = (CONTACT_COLOR,) * 3
+        elif kinds[t] == OVERLAP:
             overlap += area
             cols = (OVERLAP_COLOR,) * 3
         elif w is None:

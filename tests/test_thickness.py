@@ -238,13 +238,28 @@ class GapTest(unittest.TestCase):
         self.assertEqual((st['min'], st['tri']), (0.5, 0))
         self.assertAlmostEqual(st['thin'], 0.5)
         oc, _, col, st = T.colorize_gaps(c, n, idx, [0.0, 0.0], [T.CONTACT, T.OVERLAP], 0.0, 4.0, 1.0)
-        self.assertEqual(len(oc), 9)                                # el contacto no se pinta
-        self.assertEqual(col[:4], list(T.OVERLAP_COLOR))
-        self.assertIsNone(st['min'])
+        self.assertEqual(len(oc), 18)                               # el contacto también se pinta
+        self.assertEqual(col[:4], list(T.CONTACT_COLOR))
+        self.assertEqual(col[12:16], list(T.OVERLAP_COLOR))
+        self.assertIsNone(st['min'])                                # y no cuenta como espacio
         self.assertAlmostEqual(st['contact'], 0.5)
         self.assertAlmostEqual(st['overlap'], 0.5)
         oc, _, col, _ = T.colorize_gaps(c, n, idx, [0.5, 3.0], [T.GAP, T.GAP], 0.0, 4.0, 1.0, only_thin=True)
         self.assertEqual((len(oc), col[:4]), (9, list(T.THIN)))
+
+    def test_contact_is_painted_in_any_paint_mode(self):
+        c, n, idx = square()
+        for only_thin in (False, True):
+            oc, _, col, st = T.colorize_gaps(c, n, idx, [0.0, 3.0], [T.CONTACT, T.GAP], 0.0, 4.0, 1.0, only_thin=only_thin)
+            self.assertEqual(col[:4], list(T.CONTACT_COLOR))
+            self.assertEqual(len(oc), 9 if only_thin else 18)       # con "solo lo fino", el de 3 mm no sale
+            self.assertAlmostEqual(st['thin'], 0.0)                 # tocarse no es estar por debajo del mínimo
+
+    def test_contact_does_not_tint_the_scale_next_to_it(self):
+        # los nodos compartidos con un triángulo en contacto no promedian su 0: el vecino lleva su color
+        c, n, idx = square()
+        _, _, col, _ = T.colorize_gaps(c, n, idx, [0.0, 2.0], [T.CONTACT, T.GAP], 0.0, 4.0, 1.0)
+        self.assertEqual(col[12:], list(T.color(2.0, 0.0, 4.0)) * 3)
 
 
 if __name__ == '__main__':

@@ -78,7 +78,7 @@ With **Measure: Gap**, the ray goes outwards and measures the air up to whatever
 With **See through** and the scale from 0 to 2 mm: the lid lip 0.1 mm from the wall and the shaft at 0.15 mm, in reddish orange; the 0.25 slot and the hinge pin at 0.3, in orange; a stud going 0.2 mm into the wall, in magenta.
 
 - Only what fits in the scale is painted. Faces with nothing in front of them or further away are not painted, although the result still gives the minimum.
-- Faces that touch (up to 0.01 mm) are not painted: they are given as the area in contact.
+- Faces that touch (up to 0.01 mm) are white and are given as the area in contact. They are usually inside, so they are easier to see with **See through**. The border follows the triangles: it is cleaner at a finer resolution.
 - Overlapping bodies are magenta and are given as **interference**, with the bodies involved.
 - There is a 0.01 mm margin with the minimum gap, which is the measuring error between two curves: an exact 0.1 clearance is not marked.
 - Narrow gaps are usually inside and cannot be seen from outside: that is what **See through** is for. A section barely helps: the walls of a narrow slit are edge-on and cannot be seen. Hiding a body does not work either: with *All visible* it is no longer measured.

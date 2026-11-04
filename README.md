@@ -78,7 +78,7 @@ Con **Medir: Espacio**, el rayo sale hacia fuera y mide el aire hasta lo que cad
 Con **Ver a través** y la escala de 0 a 2 mm: el reborde de la tapa a 0,1 mm de la pared y el eje a 0,15 mm, en rojo anaranjado; la ranura de 0,25 y el pasador de la bisagra a 0,3, en naranja; un tetón metido 0,2 mm en la pared, en magenta.
 
 - Solo se pinta lo que entra en la escala. Lo que no tiene nada delante o queda más lejos no se pinta, aunque el resultado da el mínimo igualmente.
-- Las caras que se tocan (hasta 0,01 mm) no se pintan: se dan como área en contacto.
+- Las caras que se tocan (hasta 0,01 mm) salen en blanco y se dan como área en contacto. Suelen quedar por dentro, así que se ven mejor con **Ver a través**. El borde va por triángulos: sale más limpio con una resolución más fina.
 - Los cuerpos que se solapan salen en magenta y se dan como **interferencia**, con los cuerpos implicados.
 - Hay 0,01 mm de margen con el espacio mínimo, porque es el error de la medida entre dos curvas: una holgura justa de 0,1 no se marca.
 - Lo estrecho suele estar por dentro y no se ve desde fuera: para eso está **Ver a través**. Una sección apenas ayuda: las paredes de una rendija estrecha quedan de canto y no se ven. Ocultar un cuerpo tampoco sirve: con *Todos los visibles* deja de medirse.

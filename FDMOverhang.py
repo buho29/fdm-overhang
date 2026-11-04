@@ -717,7 +717,10 @@ def _gap_analyse(design, s, bodies):
         if tc:
             layers.append((A.offset(tc, tn, lift), tn, tcol))
 
-    lines = [_th_legend(s, 'gap_'), '']
+    sq = '<font color="#%02x%02x%02x">■</font>'
+    lines = [_th_legend(s, 'gap_'),
+             '%s %s &nbsp; %s %s' % (sq % T.CONTACT_COLOR[:3], tr('en contacto'), sq % T.OVERLAP_COLOR[:3], tr('interferencia')),
+             '']
     if rows:
         rows.sort()
         wmin, where = rows[0][:2]
@@ -731,11 +734,10 @@ def _gap_analyse(design, s, bodies):
     elif not (contact or overlap):
         lines.append(tr('Ninguna cara tiene otra enfrente.'))
     if contact:
-        lines.append(tr('Caras en contacto: %.0f mm²') % (contact * 100))
+        lines.append('%s %s' % (sq % T.CONTACT_COLOR[:3], tr('Caras en contacto: %.0f mm²') % (contact * 100)))
     if overlap:
-        sq = '<font color="#%02x%02x%02x">■</font>' % T.OVERLAP_COLOR[:3]
         pairs = ', '.join(' ↔ '.join(p) for p in sorted(overlaps))
-        lines.append('%s %s' % (sq, tr('Interferencia: <b>%.0f mm²</b> (%s)') % (overlap * 100, pairs)))
+        lines.append('%s %s' % (sq % T.OVERLAP_COLOR[:3], tr('Interferencia: <b>%.0f mm²</b> (%s)') % (overlap * 100, pairs)))
     lines.append('<font color="#888">%s</font>' % (tr('%d triángulos en %.2f s') % (tris, time.time() - t0)))
     _th_state['result'] = {'mode': 'gap', 'min': rows[0][0] * 10 if rows else None, 'where': rows[0][1] if rows else None,
                            'thin': thin * 100, 'contact': contact * 100, 'overlap': overlap * 100}
@@ -901,7 +903,7 @@ class _ThCreatedHandler(adsk.core.CommandCreatedEventHandler):
             keep = inputs.addBoolValueInput('th_keep', tr('Mantener al cerrar'), True, '', bool(s['th_keep']))
             keep.tooltip = tr('La capa se queda al cerrar el diálogo, hasta que cambie alguno de los cuerpos: '
                               'entonces se quita y hay que volver a abrir el diálogo. No se guarda en el archivo.')
-            inputs.addTextBoxCommandInput('th_info', tr('Resultado'), '', 8, True).isFullWidth = True
+            inputs.addTextBoxCommandInput('th_info', tr('Resultado'), '', 9, True).isFullWidth = True
             _th_update_visibility(inputs)
 
             for ev, h in ((cmd.executePreview, _ThPreviewHandler()), (cmd.inputChanged, _ThChangedHandler()),
