@@ -94,8 +94,6 @@ def _load_settings():
             s[k] = 'visible'
     if s['bed'] == 'face':
         s['bed'] = _default_bed()
-    # el diálogo no se dibuja hasta que acaba la primera medida: se abre siempre en la resolución rápida
-    s['th_res'] = 'coarse'
     return s
 
 
@@ -112,6 +110,20 @@ def _save_settings(s):
             json.dump(all_s, f, indent=2, ensure_ascii=False)
     except OSError:
         pass
+
+
+def _add_run_button(inputs, key):
+    """Botón que lanza el análisis: al abrir el diálogo no se calcula nada, porque en una pieza grande bloquearía
+    Fusion antes de poder ajustar nada."""
+    btn = inputs.addBoolValueInput(key, '', False, '', False)
+    btn.text = tr('Analizar')
+    btn.isFullWidth = True   # sin esto, el texto sale también como etiqueta a la izquierda
+    btn.tooltip = tr('Calcula con los ajustes actuales. Después, lo que no necesita volver a medir se actualiza solo.')
+    return btn
+
+
+def _prompt():
+    return tr('Pulsa <b>Analizar</b> para ver el resultado.')
 
 
 def _choice(inputs, key, options):
@@ -209,7 +221,8 @@ def _draw(inputs):
     """Escribe el resultado y pinta la capa. Se llama desde executePreview: Fusion deshace la capa de la
     vista previa anterior al cambiar cualquier campo, y la de la última al cerrar el diálogo.
     El texto va antes que la capa porque cambiar un campo también deshace lo pintado; solo se cambia si es
-    distinto, para no lanzar otra vista previa."""
+    distinto, para no lanzar otra vista previa. Esa otra vista previa llega sin el botón pulsado: por eso lo que
+    decide si se puede pintar es que las mallas ya estén calculadas, no el botón."""
     _clear()
     layers = []
     design = adsk.fusion.Design.cast(_app.activeProduct)
@@ -220,8 +233,13 @@ def _draw(inputs):
         bodies = [sel.selection(i).entity for i in range(sel.selectionCount)]
         sel = inputs.itemById('face_sel')
         face = sel.selection(0).entity if sel.selectionCount else None
-        _state['last'] = {'design': design, 'settings': s, 'bodies': bodies, 'face': face}
-        html, layers = _analyse(design, s, bodies, face)
+        html, layers = _analyse(design, s, bodies, face, _state.get('run', False))
+        _state.pop('run', None)
+        if html is None:
+            html = _prompt()
+            _state.pop('last', None)   # no hay nada pintado que mantener al cerrar
+        else:
+            _state['last'] = {'design': design, 'settings': s, 'bodies': bodies, 'face': face}
     except Exception:
         html = '<b><font color="#d33">✖ %s</font></b><br>%s' % (
             tr('Error interno del complemento:'), traceback.format_exc().replace('\n', '<br>'))
@@ -257,9 +275,10 @@ def _drop_keep():
     _keep.clear()
 
 
-def _analyse(design, s, picked, face):
+def _analyse(design, s, picked, face, may_compute=True):
     """(html del resultado, [(coords, normales, colores) de cada cuerpo con algo que pintar]).
-    s son los ajustes del diálogo (_read); picked, los cuerpos elegidos; face, la cara de la cama o None."""
+    s son los ajustes del diálogo (_read); picked, los cuerpos elegidos; face, la cara de la cama o None.
+    Sin may_compute, si falta calcular alguna malla, devuelve (None, []) para esperar al botón."""
     if not design:
         return tr('Abre un diseño (espacio de trabajo DISEÑO).'), []
     root = design.rootComponent
@@ -281,6 +300,9 @@ def _analyse(design, s, picked, face):
         up = A.unit((-n.x, -n.y, -n.z))   # la normal de la cara apunta hacia la cama
     else:
         up = (0.0, 0.0, 1.0) if s['bed'] == 'z' else (0.0, 1.0, 0.0)
+
+    if not may_compute and any((b.entityToken, s['quality']) not in _meshes for b in bodies):
+        return None, []
 
     t0 = time.time()
     meshes = [(b, _mesh(b, s['quality'])) for b in bodies]
@@ -335,6 +357,7 @@ class _CreatedHandler(adsk.core.CommandCreatedEventHandler):
             _state['cmd'] = cmd
             _drop_keep()   # mientras el diálogo está abierto se ve la vista previa
             _state.pop('html', None)
+            _state.pop('run', None)
             cmd.isOKButtonVisible = False   # solo se mira: no hay nada que aceptar
             cmd.cancelButtonText = tr('Cerrar')
             # el tamaño inicial, para que Fusion lo tenga en cuenta al colocar el diálogo la primera vez: con
@@ -375,7 +398,8 @@ class _CreatedHandler(adsk.core.CommandCreatedEventHandler):
                 dd.listItems.add(tr(label), key == s['quality'])
             keep = inputs.addBoolValueInput('keep', tr('Mantener al cerrar'), True, '', bool(s['keep']))
             keep.tooltip = tr('La capa se queda al cerrar el diálogo y se recalcula cada vez que cambia el modelo. '
-                              'Para quitarla, vuelve a abrir el diálogo y desmárcala. No se guarda en el archivo.')
+                              'Se quita al volver a abrir el diálogo. No se guarda en el archivo.')
+            _add_run_button(inputs, 'run')
             inputs.addTextBoxCommandInput('info', tr('Resultado'), '', 10, True).isFullWidth = True
             _update_visibility(inputs)
 
@@ -395,6 +419,9 @@ class _PreviewHandler(adsk.core.CommandEventHandler):
 class _ChangedHandler(adsk.core.InputChangedEventHandler):
     def notify(self, args):
         if args.input.id == 'info':
+            return
+        if args.input.id == 'run':
+            _state['run'] = True   # lo atiende la vista previa que Fusion lanza a continuación
             return
         # args.inputs puede ser solo parte del diálogo: hacen falta todos los del comando
         inputs = args.firingEvent.sender.commandInputs
@@ -464,7 +491,7 @@ def _th_read(inputs):
 
 
 class _Busy:
-    """Ventana de progreso mientras se mide: el diálogo no se dibuja hasta que acaba la medida. steps es el número
+    """Ventana de progreso mientras se mide: el diálogo no responde hasta que acaba la medida. steps es el número
     de cuerpos; advance(i, f) indica que va por la fracción f del cuerpo i, y drawing() que ya solo queda colorear y
     pintar. Se queda en _th_state['busy'] y la cierra _th_draw al acabar de pintar. Un fallo de la ventana no puede
     estropear la medida. No usar adsk.doEvents() aquí: dentro de una vista previa colgó y cerró Fusion."""
@@ -640,10 +667,14 @@ def _gap_mesh(body, res):
     return coords, normals, idx, closed, lift
 
 
+def _gap_key(bodies, res):
+    return tuple(b.entityToken for b in bodies), res
+
+
 def _gap_measure(design, bodies, res):
     """Lo que tiene delante cada triángulo de cada cuerpo: su propio cuerpo u otro. Cada cuerpo se mira por
     separado para poder distinguir el espacio del contacto y del solape. Se guarda mientras dure el diálogo."""
-    key = (tuple(b.entityToken for b in bodies), res)
+    key = _gap_key(bodies, res)
     if key in _gap_cache:
         return _gap_cache[key]
     P, V = adsk.core.Point3D.create, adsk.core.Vector3D.create
@@ -700,12 +731,15 @@ def _gap_measure(design, bodies, res):
     return _gap_cache[key]
 
 
-def _gap_analyse(design, s, bodies):
-    """(html del resultado, capas, cuerpos analizados) midiendo el espacio delante de cada cara."""
+def _gap_analyse(design, s, bodies, may_measure=True):
+    """(html del resultado, capas, cuerpos analizados) midiendo el espacio delante de cada cara.
+    Sin may_measure, si falta medir, devuelve (None, [], []) para esperar al botón."""
     if s['gap_limit'] <= 0:
         return tr('El espacio mínimo tiene que ser mayor que 0.'), [], bodies
     if s['th_paint'] == 'map' and s['gap_hi'] <= s['gap_lo']:
         return tr('El final de la escala tiene que ser mayor que el principio.'), [], bodies
+    if not may_measure and _gap_key(bodies, s['th_res']) not in _gap_cache:
+        return None, [], []
     t0 = time.time()
     lo, hi, limit = s['gap_lo'] / 10.0, s['gap_hi'] / 10.0, s['gap_limit'] / 10.0   # cm
     meshes, results = _gap_measure(design, bodies, s['th_res'])
@@ -752,8 +786,9 @@ def _gap_analyse(design, s, bodies):
     return '<br>'.join(lines), layers, bodies
 
 
-def _th_analyse(design, s, picked):
-    """(html del resultado, capas, cuerpos analizados)."""
+def _th_analyse(design, s, picked, may_measure=True):
+    """(html del resultado, capas, cuerpos analizados). Sin may_measure, si falta medir algún cuerpo, devuelve
+    (None, [], []) para esperar al botón."""
     if not design:
         return tr('Abre un diseño (espacio de trabajo DISEÑO).'), [], []
     if s['th_bodies'] == 'pick':
@@ -767,18 +802,21 @@ def _th_analyse(design, s, picked):
     if not bodies:
         return tr('No hay cuerpos sólidos que medir.'), [], []
     if s['th_mode'] == 'gap':
-        return _gap_analyse(design, s, bodies)
+        return _gap_analyse(design, s, bodies, may_measure)
     if s['th_limit'] <= 0:
         return tr('El espesor mínimo tiene que ser mayor que 0.'), [], bodies
     if s['th_paint'] == 'map' and s['th_hi'] <= s['th_lo']:
         return tr('El final de la escala tiene que ser mayor que el principio.'), [], bodies
+
+    pending = [b for b in bodies if (b.entityToken, s['th_res']) not in _th_meshes]
+    if pending and not may_measure:
+        return None, [], []
 
     t0 = time.time()
     lo, hi, limit = s['th_lo'] / 10.0, s['th_hi'] / 10.0, s['th_limit'] / 10.0   # cm
     layers, rows, open_bodies = [], [], []
     thin = total = 0.0
     tris = 0
-    pending = [b for b in bodies if (b.entityToken, s['th_res']) not in _th_meshes]
     if pending:
         busy = _Busy(len(pending))
         for i, b in enumerate(pending):
@@ -824,8 +862,13 @@ def _th_draw(inputs):
         _save_settings(s)
         sel = inputs.itemById('th_body_sel')
         picked = [sel.selection(i).entity for i in range(sel.selectionCount)]
-        html, layers, bodies = _th_analyse(design, s, picked)
-        _th_state['last'] = {'design': design, 'settings': s, 'layers': layers, 'bodies': bodies}
+        html, layers, bodies = _th_analyse(design, s, picked, _th_state.get('run', False))
+        _th_state.pop('run', None)
+        if html is None:
+            html = _prompt()
+            _th_state.pop('last', None)   # no hay nada pintado que mantener al cerrar
+        else:
+            _th_state['last'] = {'design': design, 'settings': s, 'layers': layers, 'bodies': bodies}
     except Exception:
         html = '<b><font color="#d33">✖ %s</font></b><br>%s' % (
             tr('Error interno del complemento:'), traceback.format_exc().replace('\n', '<br>'))
@@ -870,6 +913,7 @@ class _ThCreatedHandler(adsk.core.CommandCreatedEventHandler):
             _th_state['cmd'] = cmd
             _th_drop_keep()
             _th_state.pop('html', None)
+            _th_state.pop('run', None)
             cmd.isOKButtonVisible = False
             cmd.cancelButtonText = tr('Cerrar')
             # el tamaño inicial, para que Fusion lo tenga en cuenta al colocar el diálogo la primera vez: con
@@ -909,8 +953,9 @@ class _ThCreatedHandler(adsk.core.CommandCreatedEventHandler):
             xray.tooltip = tr('Pone los cuerpos medidos en transparencia mientras el diálogo está abierto, para ver '
                               'lo que queda por dentro. Al cerrar vuelven a su opacidad.')
             keep = inputs.addBoolValueInput('th_keep', tr('Mantener al cerrar'), True, '', bool(s['th_keep']))
-            keep.tooltip = tr('La capa se queda al cerrar el diálogo, hasta que cambie alguno de los cuerpos: '
-                              'entonces se quita y hay que volver a abrir el diálogo. No se guarda en el archivo.')
+            keep.tooltip = tr('La capa se queda al cerrar el diálogo, hasta que cambie alguno de los cuerpos o se '
+                              'vuelva a abrir el diálogo. No se guarda en el archivo.')
+            _add_run_button(inputs, 'th_run')
             inputs.addTextBoxCommandInput('th_info', tr('Resultado'), '', 13, True).isFullWidth = True
             _th_update_visibility(inputs)
 
@@ -930,6 +975,9 @@ class _ThPreviewHandler(adsk.core.CommandEventHandler):
 class _ThChangedHandler(adsk.core.InputChangedEventHandler):
     def notify(self, args):
         if args.input.id == 'th_info':
+            return
+        if args.input.id == 'th_run':
+            _th_state['run'] = True   # lo atiende la vista previa que Fusion lanza a continuación
             return
         inputs = args.firingEvent.sender.commandInputs
         _th_update_visibility(inputs)

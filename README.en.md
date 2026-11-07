@@ -36,7 +36,9 @@ A phone stand seen from below: the two bridges up to 23 mm are blue; the 30 mm o
 | Detect bridges | Paints flat ceilings spanning walls in blue and takes their area out of the overhang. Unchecked, they show as overhangs |
 | Maximum bridge | Span above which a bridge goes back to red, with a warning. 23 mm by default |
 | Mesh quality | *Low*, *Normal* or *High* tessellation. Curves are classified per triangle: higher quality gives a finer edge to the marked area |
-| Keep when closed | The layer stays after closing the dialog and is recomputed after every command that may change the model. To remove it, open the dialog again and uncheck this. It only lasts while the design is open: it is not saved in the file |
+| Keep when closed | The layer stays after closing the dialog and is recomputed after every command that may change the model. It is removed when the dialog is opened again. It only lasts while the design is open: it is not saved in the file |
+
+The dialog opens without computing anything: set the fields and press **Analyse**. From then on, whatever does not need computing again (the angle, the gradient, the bridges…) updates at once; if something that does need it changes (the quality or the bodies), the layer goes away until you press it again.
 
 **Result** shows the overhang area (total, percentage of the surface and per body), the angle of the worst overhang, the area and longest span of the bridges and the area on the bed, with a warning if nothing rests flat on it.
 
@@ -59,9 +61,11 @@ The phone stand with the scale from 0 to 4 mm and **See through**: the curved wa
 | Minimum thickness / Minimum gap | What is below it is counted in the result (area and ✖). For example a 0.8 mm wall, two lines of a 0.4 nozzle. Each measure keeps its own value |
 | Paint | *Colour map* or *Only what is below the minimum* (in red) |
 | Scale from / to | Values of the red and the blue in the colour map. Each measure keeps its own |
-| Resolution | Maximum side of the triangles used to measure: *Fast (2 mm)*, *Normal (1 mm)* or *Fine (0.5 mm)*. In mesh bodies (an STL) their triangles are split down to that size. The dialog always opens in *Fast*, because it does not appear until the first measurement ends |
+| Resolution | Maximum side of the triangles used to measure: *Fast (2 mm)*, *Normal (1 mm)* or *Fine (0.5 mm)*. In mesh bodies (an STL) their triangles are split down to that size |
 | See through | Makes the measured bodies transparent while the dialog is open, to see what is inside. They go back to their opacity when it is closed, also with *Keep when closed* |
-| Keep when closed | The layer stays after closing the dialog until one of the bodies changes; then it is removed and the dialog has to be opened again (it cannot be recomputed outside the dialog). It is not saved in the file |
+| Keep when closed | The layer stays after closing the dialog until one of the bodies changes or the dialog is opened again (it cannot be recomputed outside the dialog). It is not saved in the file |
+
+As in FDM overhangs, nothing is measured until you press **Analyse**. Measurements are kept while the dialog is open: the scale, the minimum or *Paint* update at once, and a resolution or bodies not measured yet wait for the button.
 
 **Result** shows the thinnest point (and its body), the area below the minimum thickness and, with several bodies, both values for each.
 

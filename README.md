@@ -36,7 +36,9 @@ Un soporte de móvil visto desde abajo: los dos puentes que no pasan de 23 mm sa
 | Detectar puentes | Pinta en azul los techos planos tendidos entre paredes y descuenta su área del voladizo. Sin marcar, salen como voladizo |
 | Puente máximo | Luz a partir de la cual un puente vuelve a salir en rojo, con un aviso. Por defecto 23 mm |
 | Calidad de la malla | Teselado *Baja*, *Normal* o *Alta*. Las curvas se clasifican por triángulos: con más calidad, el borde de la zona marcada es más fino |
-| Mantener al cerrar | La capa se queda al cerrar el diálogo y se recalcula cada vez que termina un comando que pueda cambiar el modelo. Para quitarla, se vuelve a abrir el diálogo y se desmarca. Solo dura mientras el diseño está abierto: no se guarda en el archivo |
+| Mantener al cerrar | La capa se queda al cerrar el diálogo y se recalcula cada vez que termina un comando que pueda cambiar el modelo. Se quita al volver a abrir el diálogo. Solo dura mientras el diseño está abierto: no se guarda en el archivo |
+
+El diálogo se abre sin calcular nada: se ajustan los campos y se pulsa **Analizar**. A partir de ahí, lo que no necesita calcular de nuevo (el ángulo, el degradado, los puentes…) se actualiza al momento; si cambia algo que sí lo necesita (la calidad o los cuerpos), la capa se quita hasta volver a pulsar.
 
 En **Resultado** salen el área en voladizo (total, porcentaje de la superficie y por cuerpo), el ángulo del peor voladizo, el área y la luz más larga de los puentes y el área apoyada en la cama, con un aviso si nada apoya en plano.
 
@@ -59,9 +61,11 @@ El soporte de móvil con la escala de 0 a 4 mm y **Ver a través**: la pared cur
 | Espesor mínimo / Espacio mínimo | Lo que no llega se cuenta en el resultado (área y ✖). Por ejemplo 0,8 mm de pared, dos pasadas de una boquilla de 0,4. Cada medida guarda su propio valor |
 | Pintar | *Mapa de color* o *Solo lo que no llega al mínimo* (en rojo) |
 | Escala desde / hasta | Medidas del rojo y del azul en el mapa de color. Cada medida guarda las suyas |
-| Resolución | Lado máximo de los triángulos con los que se mide: *Rápida (2 mm)*, *Normal (1 mm)* o *Fina (0,5 mm)*. En los cuerpos de malla (un STL) se parten sus triángulos hasta ese tamaño. El diálogo se abre siempre en *Rápida*, porque no aparece hasta que termina la primera medida |
+| Resolución | Lado máximo de los triángulos con los que se mide: *Rápida (2 mm)*, *Normal (1 mm)* o *Fina (0,5 mm)*. En los cuerpos de malla (un STL) se parten sus triángulos hasta ese tamaño |
 | Ver a través | Pone los cuerpos medidos en transparencia mientras el diálogo está abierto, para ver lo que queda por dentro. Al cerrar vuelven a su opacidad, también con *Mantener al cerrar* |
-| Mantener al cerrar | La capa se queda al cerrar el diálogo hasta que cambie alguno de los cuerpos; entonces se quita y hay que volver a abrir el diálogo (fuera del diálogo no se puede recalcular). No se guarda en el archivo |
+| Mantener al cerrar | La capa se queda al cerrar el diálogo hasta que cambie alguno de los cuerpos o se vuelva a abrir el diálogo (fuera del diálogo no se puede recalcular). No se guarda en el archivo |
+
+Igual que en Voladizos FDM, no se mide nada hasta pulsar **Analizar**. Las medidas se guardan mientras el diálogo está abierto: la escala, el mínimo o *Pintar* se actualizan al momento, y una resolución o unos cuerpos que aún no se han medido esperan al botón.
 
 En **Resultado** salen lo más fino (y de qué cuerpo), el área por debajo del espesor mínimo y, con varios cuerpos, los dos datos de cada uno.
 

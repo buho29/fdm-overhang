@@ -52,9 +52,13 @@ EN = {
     'Resultado': 'Result',
     'Mantener al cerrar': 'Keep when closed',
     'La capa se queda al cerrar el diálogo y se recalcula cada vez que cambia el modelo. '
-    'Para quitarla, vuelve a abrir el diálogo y desmárcala. No se guarda en el archivo.':
+    'Se quita al volver a abrir el diálogo. No se guarda en el archivo.':
         'The layer stays after closing the dialog and is recomputed whenever the model changes. '
-        'To remove it, open the dialog again and uncheck this. It is not saved in the file.',
+        'It is removed when the dialog is opened again. It is not saved in the file.',
+    'Analizar': 'Analyse',
+    'Calcula con los ajustes actuales. Después, lo que no necesita volver a medir se actualiza solo.':
+        'Computes with the current settings. After that, whatever does not need measuring again updates by itself.',
+    'Pulsa <b>Analizar</b> para ver el resultado.': 'Press <b>Analyse</b> to see the result.',
     # ------------------------------------------------ espesor de pared
     'Espesor y espacios': 'Thickness and gaps',
     'Midiendo… %p %': 'Measuring… %p %',
@@ -94,10 +98,10 @@ EN = {
     'Fina (0,5 mm)': 'Fine (0.5 mm)',
     'Lado máximo de los triángulos con los que se mide. Más fina, más detalle y más lento.':
         'Maximum side of the triangles used to measure. Finer is more detailed and slower.',
-    'La capa se queda al cerrar el diálogo, hasta que cambie alguno de los cuerpos: '
-    'entonces se quita y hay que volver a abrir el diálogo. No se guarda en el archivo.':
-        'The layer stays after closing the dialog until one of the bodies changes: then it is removed and '
-        'the dialog has to be opened again. It is not saved in the file.',
+    'La capa se queda al cerrar el diálogo, hasta que cambie alguno de los cuerpos o se '
+    'vuelva a abrir el diálogo. No se guarda en el archivo.':
+        'The layer stays after closing the dialog until one of the bodies changes or the dialog is opened '
+        'again. It is not saved in the file.',
     'menos de %s mm': 'below %s mm',
     'en contacto': 'in contact',
     'interferencia': 'interference',
