@@ -110,6 +110,16 @@ Para actualizar, ejecuta el `instalar.bat` de la versión nueva: se conservan lo
 
 Copia la carpeta `FDMOverhang` del zip a `~/Library/Application Support/Autodesk/Autodesk Fusion 360/API/AddIns/`.
 
+### slicer-paint (para *Enviar al laminador*)
+
+Opcional: sin él, *Enviar al laminador* solo guarda el STL y el archivo de pieza. Necesita Python 3.10 o posterior y [pipx](https://pipx.pypa.io):
+
+```powershell
+pipx install git+https://github.com/buho29/slicer-paint
+```
+
+El complemento lo busca en el PATH. Si no lo encuentra, la primera vez que envíes una pieza te pregunta dónde está `slicer-paint.exe` y lo recuerda. Con pipx en Windows suele estar en `%USERPROFILE%\.local\bin`.
+
 ### Desde el repo (desarrollo)
 
 Con Fusion cerrado:

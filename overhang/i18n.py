@@ -127,6 +127,72 @@ EN = {
     'Nada apoya en plano sobre la cama: reorienta la pieza o usa borde de adherencia.':
         'Nothing rests flat on the bed: reorient the part or use a brim.',
     '%d triángulos en %.2f s': '%d triangles in %.2f s',
+    # ------------------------------------------------ enviar al laminador
+    'Enviar al laminador': 'Send to slicer',
+    'Exporta un cuerpo con su cama y con dónde forzar o prohibir la costura y los soportes, también donde '
+    'hay poca holgura, y lo abre en el laminador con slicer-paint.':
+        'Exports a body with its bed face and where to enforce or block the seam and supports, also where the '
+        'clearance is small, and opens it in the slicer with slicer-paint.',
+    'Enviar': 'Send',
+    'Cuerpo': 'Body',
+    'El cuerpo que vas a imprimir. Los demás cuerpos visibles solo cuentan al medir la holgura.':
+        'The body you are going to print. The other visible bodies only count when measuring the clearance.',
+    'No hay ningún cuerpo sólido visible.': 'There is no visible solid body.',
+    'Costura': 'Seam',
+    'Soportes': 'Supports',
+    'Forzar en': 'Enforce on',
+    'Prohibir en': 'Block on',
+    'Bloquear en': 'Block on',
+    'Aristas o caras donde poner la costura. Una arista solo vale si sube respecto a las capas.':
+        'Edges or faces where the seam goes. An edge only works if it rises across the layers.',
+    'Caras o aristas donde no puede ir la costura.': 'Faces or edges where the seam must not go.',
+    'Caras donde forzar soportes. Solo cuenta lo que mire hacia abajo una vez orientada la pieza.':
+        'Faces where supports are enforced. Only what faces down once the part is oriented counts.',
+    'Caras donde no puede haber soportes.': 'Faces where supports are not allowed.',
+    'Prohibir donde hay poca holgura': 'Block where clearance is small',
+    'Mide el espacio delante de cada cara, como Espesor y espacios, y prohíbe la costura donde no llega al mínimo, '
+    'toca otra pieza o se mete en ella: la costura abulta.':
+        'Measures the space in front of each face, like Thickness and gaps, and blocks the seam where it is below '
+        'the minimum, touches another part or goes into it: the seam bulges.',
+    'Medir holgura': 'Measure clearance',
+    'Mide ahora para ver en amarillo dónde se prohibirá la costura. Si no, se mide al enviar.':
+        'Measures now to show in yellow where the seam will be blocked. Otherwise it is measured when sending.',
+    'Abrir en': 'Open in',
+    'No abrir': 'Do not open',
+    'costura forzada': 'seam enforced',
+    'costura prohibida': 'seam blocked',
+    'soportes forzados': 'supports enforced',
+    'soportes bloqueados': 'supports blocked',
+    '%d arista': '%d edge',
+    '%d aristas': '%d edges',
+    '%d cara': '%d face',
+    '%d caras': '%d faces',
+    'Cuerpo: <b>%s</b>': 'Body: <b>%s</b>',
+    'Cama: %s': 'Bed: %s',
+    'Nada elegido a mano.': 'Nothing selected by hand.',
+    'La holgura se mide al pulsar <b>Medir holgura</b> o al enviar.':
+        'Clearance is measured when you press <b>Measure clearance</b> or when sending.',
+    'poca holgura (menos de %s mm): %.0f mm², costura prohibida':
+        'small clearance (below %s mm): %.0f mm², seam blocked',
+    'Ninguna cara tiene menos de %s mm de holgura.': 'No face has less than %s mm of clearance.',
+    'Lo elegido tiene que ser del cuerpo que se envía.': 'What you select must belong to the body being sent.',
+    'No se pudo recorrer una arista.': 'An edge could not be traced.',
+    'No encuentro slicer-paint: al enviar te preguntaré dónde está.':
+        'slicer-paint not found: you will be asked where it is when sending.',
+    '¿Dónde está slicer-paint? Si cancelas, solo se guardan el STL y el JSON':
+        'Where is slicer-paint? If you cancel, only the STL and the JSON are saved',
+    'Todos los archivos': 'All files',
+    '%s no es slicer-paint.': '%s is not slicer-paint.',
+    'No se pudo exportar el STL: %s': 'The STL could not be exported: %s',
+    'El STL no está en las coordenadas del diseño: las zonas no caerían sobre la pieza.\n'
+    'STL (mm): %s\nCuerpo (cm): %s':
+        'The STL is not in the design coordinates: the zones would not land on the part.\n'
+        'STL (mm): %s\nBody (cm): %s',
+    'Guardados %s y %s.\n\nSin slicer-paint. Para generar el 3MF, ejecútalo a mano:\n%s':
+        'Saved %s and %s.\n\nNo slicer-paint. To build the 3MF, run it by hand:\n%s',
+    'slicer-paint ha fallado (código %d):': 'slicer-paint failed (code %d):',
+    'Guardado: %s': 'Saved: %s',
+    'Enviar al laminador: error': 'Send to slicer: error',
     # ------------------------------------------------ errores
     'Voladizos FDM: error': 'FDM overhangs: error',
     'Voladizos FDM: error al arrancar': 'FDM overhangs: error on start',

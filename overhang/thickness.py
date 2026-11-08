@@ -337,6 +337,11 @@ def combine(own, others):
     return GAP, best, who
 
 
+def below_limit(w, limit, margin=0.0):
+    """Si el espacio w no llega a limit: tiene que bajar más que 'margin', el error de la malla."""
+    return w < limit - max(EPS * limit, margin)
+
+
 def colorize_gaps(coords, normals, indices, vals, kinds, lo, hi, limit, only_thin=False, margin=0.0):
     """Colorea la malla según el espacio que tiene delante cada triángulo. No se pinta lo que no tiene nada
     delante ni lo que supera hi: el mapa es para ver lo estrecho, y lo lejano solo tapa. Lo que toca a otro cuerpo
@@ -367,7 +372,7 @@ def colorize_gaps(coords, normals, indices, vals, kinds, lo, hi, limit, only_thi
         else:
             if vmin is None or w < vmin:
                 vmin, where = w, t
-            below = w < limit - max(EPS * limit, margin)
+            below = below_limit(w, limit, margin)
             if below:
                 thin += area
             elif only_thin or w > hi:

@@ -5,6 +5,8 @@
 # - "Espesor y espacios": mapa de color del espesor de las paredes o del espacio entre superficies (rojo lo
 #   estrecho -> azul lo ancho), o solo lo que no llega al mínimo.
 # Son gráficos personalizados: no tocan el diseño ni la línea de tiempo y se borran al cerrar el diálogo.
+# - "Enviar al laminador": exporta un cuerpo en STL con su cama, dónde forzar o prohibir la costura y los soportes
+#   (lo elegido y lo que tiene poca holgura), y lo pasa a slicer-paint, que genera el 3MF pintado.
 import importlib
 import json
 import os
@@ -21,10 +23,12 @@ if HERE not in sys.path:
 import overhang.i18n  # noqa: E402
 import overhang.analysis  # noqa: E402
 import overhang.thickness  # noqa: E402
-for _m in (overhang.i18n, overhang.analysis, overhang.thickness):   # recargar al reiniciar el add-in
+import overhang.slicer  # noqa: E402
+for _m in (overhang.i18n, overhang.analysis, overhang.thickness, overhang.slicer):   # recargar al reiniciar el add-in
     importlib.reload(_m)
 from overhang import analysis as A  # noqa: E402
 from overhang import thickness as T  # noqa: E402
+from overhang import slicer as S  # noqa: E402
 from overhang.i18n import tr, set_language  # noqa: E402
 
 CMD_ID = 'buhoFdmOverhang'
@@ -37,6 +41,9 @@ TH_CMD_ID = 'buhoFdmThickness'
 TH_GROUP_ID = 'fdm_thickness'
 TH_KEEP_ID = 'fdm_thickness_keep'
 TH_KEEP_EVENT = 'buhoFdmThicknessKeep'
+SL_CMD_ID = 'buhoFdmSlicer'
+SL_GROUP_ID = 'fdm_slicer'
+SL_DONE_EVENT = 'buhoFdmSlicerDone'
 SETTINGS = os.path.join(HERE, 'settings.json')
 TOL_CM = 0.001   # lo que está a menos de 0.01 mm de la cama apoya en ella
 
@@ -82,7 +89,8 @@ def _load_settings():
          'quality': 'normal', 'keep': False, 'bridge': True, 'bridge_max': 23.0,
          'th_bodies': 'visible', 'th_res': 'coarse', 'th_paint': 'map', 'th_limit': 0.8, 'th_lo': 0.0,
          'th_hi': 4.0, 'th_keep': False, 'th_mode': 'thickness', 'gap_limit': 0.1, 'gap_lo': 0.0, 'gap_hi': 2.0,
-         'th_xray': True}
+         'th_xray': True, 'sl_bed': _default_bed(), 'sl_gap': True, 'sl_gap_limit': 0.4, 'sl_res': 'normal',
+         'sl_open': 'orca', 'sl_dir': '', 'slicer_paint': ''}
     try:
         with open(SETTINGS, encoding='utf-8') as f:
             s.update(json.load(f))
@@ -92,8 +100,9 @@ def _load_settings():
     for k in ('bodies', 'th_bodies'):
         if s[k] == 'pick':
             s[k] = 'visible'
-    if s['bed'] == 'face':
-        s['bed'] = _default_bed()
+    for k in ('bed', 'sl_bed'):
+        if s[k] == 'face':
+            s[k] = _default_bed()
     return s
 
 
@@ -464,7 +473,7 @@ class _TerminatedHandler(adsk.core.ApplicationCommandEventHandler):
     mantenida y quita la de espesor si sus cuerpos han cambiado (esa no se puede recalcular fuera del diálogo)."""
     def notify(self, args):
         try:
-            if (args.commandId in (CMD_ID, TH_CMD_ID, 'SelectCommand')
+            if (args.commandId in (CMD_ID, TH_CMD_ID, SL_CMD_ID, 'SelectCommand')
                     or args.terminationReason != adsk.core.CommandTerminationReason.CompletedTerminationReason):
                 return
             design = _keep.get('design')
@@ -667,14 +676,16 @@ def _gap_mesh(body, res):
     return coords, normals, idx, closed, lift
 
 
-def _gap_key(bodies, res):
-    return tuple(b.entityToken for b in bodies), res
+def _gap_key(bodies, res, cast=None):
+    return tuple(b.entityToken for b in bodies), res, cast
 
 
-def _gap_measure(design, bodies, res):
+def _gap_measure(design, bodies, res, cast=None):
     """Lo que tiene delante cada triángulo de cada cuerpo: su propio cuerpo u otro. Cada cuerpo se mira por
-    separado para poder distinguir el espacio del contacto y del solape. Se guarda mientras dure el diálogo."""
-    key = _gap_key(bodies, res)
+    separado para poder distinguir el espacio del contacto y del solape. Se guarda mientras dure el diálogo.
+    cast: índices de los cuerpos desde los que se lanzan rayos (None, todos); los demás solo sirven de obstáculo
+    y su resultado es None."""
+    key = _gap_key(bodies, res, cast)
     if key in _gap_cache:
         return _gap_cache[key]
     P, V = adsk.core.Point3D.create, adsk.core.Vector3D.create
@@ -683,9 +694,10 @@ def _gap_measure(design, bodies, res):
     for m in meshes:
         xyz = [m[0][i::3] for i in range(3)]
         boxes.append((tuple(min(v) for v in xyz), tuple(max(v) for v in xyz)))
-    busy = _Busy(len(meshes))
+    cast = range(len(meshes)) if cast is None else cast
+    busy = _Busy(len(cast))
     objs = _temp_meshes(design, [(m[0], m[2]) for m in meshes])
-    results = []
+    results = [None] * len(meshes)
 
     def other_body(j, point, direction, vec):
         back = P(point[0] - GAP_BACK * direction[0], point[1] - GAP_BACK * direction[1],
@@ -694,12 +706,13 @@ def _gap_measure(design, bodies, res):
         return T.classify_other(hits, GAP_BACK, meshes[j][3])
 
     try:
-        for i, m in enumerate(meshes):
+        for step, i in enumerate(cast):
+            m = meshes[i]
             vals, kinds, who = [], [], []
             total = len(m[2]) // 3
             for ray in T.rays(m[0], m[2], outward=True):
                 if len(vals) % BUSY_EVERY == 0:
-                    busy.advance(i, len(vals) / total)
+                    busy.advance(step, len(vals) / total)
                 if not ray:
                     vals.append(T.NO_HIT), kinds.append(T.GAP), who.append(-1)
                     continue
@@ -723,7 +736,7 @@ def _gap_measure(design, bodies, res):
                         others.append((kind, dist, j))
                 kind, dist, j = T.combine(own, others)
                 vals.append(dist), kinds.append(kind), who.append(j)
-            results.append((vals, kinds, who))
+            results[i] = (vals, kinds, who)
     finally:
         _drop_temp(objs)
     busy.drawing()
@@ -1023,6 +1036,503 @@ class _ThKeepHandler(adsk.core.CustomEventHandler):
             pass
 
 
+# ======================================================================== enviar al laminador
+
+OPEN_IN = [('orca', 'OrcaSlicer'), ('bambu', 'Bambu Studio'), ('none', 'No abrir')]
+FACE_TOL = 0.002    # cm: malla de las caras elegidas; solo sirve para reconocer sus triángulos en el STL
+STROKE_TOL = 0.001  # cm: puntos de las aristas elegidas
+# (campo, tipo, papel, color, texto de la leyenda)
+SL_ROLES = [('sl_seam_on', 'seam', 'enforce', (0, 190, 230), 'costura forzada'),
+            ('sl_seam_off', 'seam', 'block', (255, 150, 0), 'costura prohibida'),
+            ('sl_sup_on', 'support', 'enforce', (60, 200, 60), 'soportes forzados'),
+            ('sl_sup_off', 'support', 'block', (220, 30, 30), 'soportes bloqueados')]
+SL_TIGHT_COLOR = (240, 220, 0)   # poca holgura: también costura prohibida, pero medida y no elegida
+_sl_state = {}
+
+
+def _sl_read(inputs):
+    item = inputs.itemById('sl_body').selectedItem
+    return {'sl_body': item.name if item else None, 'sl_bed': _choice(inputs, 'sl_bed', BEDS), 'sl_gap': inputs.itemById('sl_gap').value,
+            'sl_gap_limit': round(inputs.itemById('sl_gap_limit').value * 10, 4),   # mm
+            'sl_res': _choice(inputs, 'sl_res', RESOLUTIONS), 'sl_open': _choice(inputs, 'sl_open', OPEN_IN)}
+
+
+def _picked(inputs, key):
+    sel = inputs.itemById(key)
+    return [sel.selection(i).entity for i in range(sel.selectionCount)]
+
+
+def _sl_bodies(design):
+    """[(nombre para la lista, cuerpo)] de los sólidos visibles. Con el componente si el nombre se repite."""
+    bodies = [b for b in _visible_bodies(design.rootComponent) if getattr(b, 'isSolid', False)] if design else []
+    names = [b.name for b in bodies]
+    return [(b.name if names.count(b.name) == 1 or not b.assemblyContext
+             else '%s (%s)' % (b.name, b.assemblyContext.name), b) for b in bodies]
+
+
+def _sl_body(inputs):
+    """El cuerpo elegido en la lista, o None. Es una lista y no un campo de selección porque Fusion resalta en azul
+    el cuerpo seleccionado entero y taparía lo que se pinta encima."""
+    item = inputs.itemById('sl_body').selectedItem
+    bodies = _sl_state.get('bodies', [])
+    if not item or item.index >= len(bodies):
+        return None
+    body = bodies[item.index][1]
+    return body if body.isValid else None
+
+
+def _same_body(entity, body):
+    """Si la arista o la cara es del cuerpo, también dentro de una ocurrencia."""
+    try:
+        return entity.body.entityToken == body.entityToken
+    except Exception:
+        return False
+
+
+def _to_root(body):
+    """Matriz (Matrix3D.asArray) que lleva del componente del cuerpo al raíz, o None."""
+    return body.assemblyContext.transform2.asArray() if body.assemblyContext else None
+
+
+def _sl_face(face, body):
+    """(cara del formato, (coords, normales, índices) en cm en el raíz) de una cara elegida."""
+    native = face.nativeObject or face
+    calc = native.meshManager.createMeshCalculator()
+    calc.surfaceTolerance = FACE_TOL
+    m = calc.calculate()
+    coords, normals, idx = list(m.nodeCoordinatesAsDouble), list(m.normalVectorsAsDouble), list(m.nodeIndices)
+    tf = _to_root(body)
+    if tf:
+        coords, normals = A.transform(coords, normals, tf)
+    return S.face(coords, idx, native.area), (coords, normals, idx)
+
+
+def _sl_edge(edge, body):
+    """Puntos de una arista elegida, en cm en el raíz (planos, x y z seguidos)."""
+    ev = (edge.nativeObject or edge).evaluator
+    ok, t0, t1 = ev.getParameterExtents()
+    ok2, pts = ev.getStrokes(t0, t1, STROKE_TOL)
+    if not (ok and ok2):
+        raise ValueError(tr('No se pudo recorrer una arista.'))
+    flat = [v for p in pts for v in p.asArray()]
+    tf = _to_root(body)
+    return A.transform(flat, [], tf)[0] if tf else flat
+
+
+def _soup(coords, normals, idx, rgb, lift):
+    """Capa (coords, normales, colores) con tres vértices propios por triángulo, separada 'lift' de la cara."""
+    tc, tn = [], []
+    for k in idx:
+        tc += coords[3 * k:3 * k + 3]
+        tn += normals[3 * k:3 * k + 3]
+    return A.offset(tc, tn, lift), tn, list(rgb + (255,)) * len(idx)
+
+
+def _sl_bed(s, inputs, body):
+    """Normal hacia fuera de la cara de la cama, o un texto de error."""
+    if s['sl_bed'] != 'face':
+        return S.bed_vector(s['sl_bed'])
+    picked = _picked(inputs, 'sl_face')
+    if not picked:
+        return tr('Elige la cara plana que va sobre la cama.')
+    face = adsk.fusion.BRepFace.cast(picked[0])
+    native = face.nativeObject or face
+    _, n = native.evaluator.getNormalAtPoint(native.pointOnFace)   # en un sólido, hacia fuera
+    n = [n.x, n.y, n.z]
+    tf = _to_root(body)
+    if tf:
+        n = A.transform([], n, tf)[1]
+    return S.bed_vector('face', n)
+
+
+def _gap_bodies(design, body):
+    """El cuerpo que se envía, el primero, y los demás sólidos y mallas visibles, que pueden quitarle holgura."""
+    others = [b for b in _visible_bodies(design.rootComponent) if b.entityToken != body.entityToken
+              and (adsk.fusion.MeshBody.cast(b) or getattr(b, 'isSolid', False))]
+    return [body] + others
+
+
+def _count(n_edges, n_faces):
+    parts = []
+    if n_edges:
+        parts.append(tr('%d arista') % n_edges if n_edges == 1 else tr('%d aristas') % n_edges)
+    if n_faces:
+        parts.append(tr('%d cara') % n_faces if n_faces == 1 else tr('%d caras') % n_faces)
+    return ', '.join(parts)
+
+
+def _sl_collect(design, s, inputs, may_measure):
+    """(archivo de pieza o None, html, capas, aristas [(coords, color)]). Sin may_measure, la poca holgura solo
+    entra si ya está medida: medir puede tardar y no se hace al abrir ni con cada cambio."""
+    body = _sl_body(inputs)
+    if not body:
+        return None, tr('No hay ningún cuerpo sólido visible.'), [], []
+    bed = _sl_bed(s, inputs, body)
+    if isinstance(bed, str):
+        return None, bed, [], []
+    layers, lines, roles, rows = [], [], {}, []
+    sq = '<font color="#%02x%02x%02x">■</font> %s'
+    for key, kind, role, rgb, label in SL_ROLES:
+        edges, faces = [], []
+        for ent in _picked(inputs, key):
+            if not _same_body(ent, body):
+                return None, tr('Lo elegido tiene que ser del cuerpo que se envía.'), [], []
+            face, edge = adsk.fusion.BRepFace.cast(ent), adsk.fusion.BRepEdge.cast(ent)
+            if face:
+                data, (c, n, idx) = _sl_face(face, body)
+                faces.append(data)
+                layers.append(_soup(c, n, idx, rgb, A.lift(FACE_TOL, _display_tolerance(body.nativeObject or body))))
+                # el resaltado de Fusion tapa la cara elegida, pero no las líneas: el contorno lleva el color
+                lines += [(_sl_edge(e, body), rgb) for e in face.edges]
+            elif edge:
+                pts = _sl_edge(edge, body)
+                edges.append(S.edge([pts[i:i + 3] for i in range(0, len(pts), 3)]))
+                lines.append((pts, rgb))
+        roles['%s_%s' % (kind, role)] = [edges, faces, []]
+        if edges or faces:
+            rows.append(sq % (rgb + ('%s: %s' % (tr(label), _count(len(edges), len(faces))),)))
+
+    tight_html = ''
+    if s['sl_gap']:
+        if s['sl_gap_limit'] <= 0:
+            return None, tr('El espacio mínimo tiene que ser mayor que 0.'), layers, lines
+        bodies = _gap_bodies(design, body)
+        if not may_measure and _gap_key(bodies, s['sl_res'], (0,)) not in _gap_cache:
+            tight_html = tr('La holgura se mide al pulsar <b>Medir holgura</b> o al enviar.')
+        else:
+            meshes, results = _gap_measure(design, bodies, s['sl_res'], (0,))
+            (c, n, idx, _, lift), (vals, kinds, _) = meshes[0], results[0]
+            tris = S.tight_triangles(vals, kinds, s['sl_gap_limit'] / 10.0, GAP_MARGIN)
+            zone = S.patch(c, idx, tris)
+            if zone:
+                roles['seam_block'][2].append(zone)
+                layers.append(_soup(c, n, [idx[3 * t + k] for t in tris for k in range(3)], SL_TIGHT_COLOR, lift))
+                area = sum(T._tri(c, idx, 3 * t)[2] for t in tris) * 100
+                tight_html = sq % (SL_TIGHT_COLOR + (tr('poca holgura (menos de %s mm): %.0f mm², costura prohibida')
+                                                     % (_mm(s['sl_gap_limit']), area),))
+            else:
+                tight_html = tr('Ninguna cara tiene menos de %s mm de holgura.') % _mm(s['sl_gap_limit'])
+
+    job = S.job(body.name, bed, **{k: S.selection(*v) for k, v in roles.items()})
+    html = [tr('Cuerpo: <b>%s</b>') % body.name, tr('Cama: %s') % tr(dict(BEDS)[s['sl_bed']]), '']
+    html += rows or [tr('Nada elegido a mano.')]
+    if tight_html:
+        html.append(tight_html)
+    exe = S.find_exe(_load_settings()['slicer_paint'])
+    html.append('')
+    if exe:
+        html.append('<font color="#888">slicer-paint: %s</font>' % exe)
+    else:
+        html.append('<font color="#c80">⚠ %s</font>' % tr('No encuentro slicer-paint: al enviar te preguntaré '
+                                                           'dónde está.'))
+    return job, '<br>'.join(html), layers, lines
+
+
+def _sl_paint(design, layers, lines):
+    _paint(design, layers, SL_GROUP_ID)
+    if not lines:
+        return
+    groups = [g for g in design.rootComponent.customGraphicsGroups if g.id == SL_GROUP_ID]
+    grp = groups[0] if groups else design.rootComponent.customGraphicsGroups.add()
+    grp.id = SL_GROUP_ID
+    for pts, rgb in lines:
+        ln = grp.addLines(adsk.fusion.CustomGraphicsCoordinates.create(pts), [], True)
+        ln.weight = 4
+        ln.color = adsk.fusion.CustomGraphicsSolidColorEffect.create(adsk.core.Color.create(*(rgb + (255,))))
+        ln.depthPriority = 2
+
+
+def _close_busy():
+    busy = _th_state.pop('busy', None)
+    if busy:
+        busy.close()
+
+
+def _sl_draw(inputs):
+    """Como _draw: resultado y capa con lo que va a cada papel."""
+    _clear(SL_GROUP_ID)
+    layers, lines = [], []
+    design = adsk.fusion.Design.cast(_app.activeProduct)
+    try:
+        s = _sl_read(inputs)
+        _save_settings(s)
+        if not design:
+            html = tr('Abre un diseño (espacio de trabajo DISEÑO).')
+        else:
+            _, html, layers, lines = _sl_collect(design, s, inputs, _sl_state.pop('run', False))
+    except Exception:
+        html = '<b><font color="#d33">✖ %s</font></b><br>%s' % (
+            tr('Error interno del complemento:'), traceback.format_exc().replace('\n', '<br>'))
+    if _sl_state.get('html') != html:
+        _sl_state['html'] = html
+        inputs.itemById('sl_info').formattedText = html
+    try:
+        if design:
+            _sl_paint(design, layers, lines)
+        _app.activeViewport.refresh()
+    finally:
+        _close_busy()
+
+
+def _sl_update_visibility(inputs):
+    inputs.itemById('sl_face').isVisible = _choice(inputs, 'sl_bed', BEDS) == 'face'
+    gap = inputs.itemById('sl_gap').value
+    for k in ('sl_gap_limit', 'sl_res', 'sl_measure'):
+        inputs.itemById(k).isVisible = gap
+
+
+def _sl_target(s, body_name):
+    """Ruta del 3MF que elige el usuario, o None si cancela."""
+    dlg = _ui.createFileDialog()
+    dlg.title = tr('Enviar al laminador')
+    dlg.filter = '3MF (*.3mf)'
+    if s.get('sl_dir') and os.path.isdir(s['sl_dir']):
+        dlg.initialDirectory = s['sl_dir']
+    dlg.initialFilename = ''.join(ch for ch in body_name if ch not in '\\/:*?"<>|') or 'pieza'
+    if dlg.showSave() != adsk.core.DialogResults.DialogOK:
+        return None
+    path = dlg.filename
+    return path if path.lower().endswith('.3mf') else path + '.3mf'
+
+
+def _sl_exe():
+    """Ruta de slicer-paint. Si no la encuentra, la pregunta y la recuerda en settings.json. None si el usuario
+    cancela o elige otro programa."""
+    exe = S.find_exe(_load_settings()['slicer_paint'])
+    if exe:
+        return exe
+    dlg = _ui.createFileDialog()
+    dlg.title = tr('¿Dónde está slicer-paint? Si cancelas, solo se guardan el STL y el JSON')
+    everything = tr('Todos los archivos')
+    dlg.filter = ('slicer-paint (slicer-paint.exe);;%s (*.*)' % everything if os.name == 'nt'
+                  else '%s (*)' % everything)
+    if dlg.showOpen() != adsk.core.DialogResults.DialogOK:
+        return None
+    if not S.looks_like_exe(dlg.filename):
+        _ui.messageBox(tr('%s no es slicer-paint.') % dlg.filename, tr('Enviar al laminador'))
+        return None
+    _save_settings({'slicer_paint': dlg.filename})
+    return dlg.filename
+
+
+def _sl_send(design, s, inputs):
+    """Exporta el STL, escribe el archivo de pieza y lanza slicer-paint. Devuelve un mensaje para el usuario, ''
+    si no hay nada que decir todavía (slicer-paint avisa al acabar) o None si se cancela."""
+    job, html, _, _ = _sl_collect(design, s, inputs, True)
+    _close_busy()
+    if job is None:
+        return html.replace('<br>', '\n')
+    body = _sl_body(inputs)
+    target = _sl_target(_load_settings(), body.name)
+    if not target:
+        return None
+    _save_settings({'sl_dir': os.path.dirname(target)})
+    exe = _sl_exe()   # antes de exportar, para que los dos diálogos vayan seguidos
+    stl, job_path, out = S.paths(target)
+    em = design.exportManager
+    opts = em.createSTLExportOptions(body, stl)
+    opts.isBinaryFormat = True
+    opts.meshRefinement = adsk.fusion.MeshRefinementSettings.MeshRefinementHigh
+    opts.sendToPrintUtility = False
+    if not em.execute(opts) or not os.path.isfile(stl):
+        return tr('No se pudo exportar el STL: %s') % stl
+    tf = _to_root(body)
+    if tf:   # Fusion lo exporta en las coordenadas de su componente
+        S.move_stl(stl, tf)
+    bb = body.boundingBox
+    body_box = (bb.minPoint.asArray(), bb.maxPoint.asArray())
+    stl_box = S.stl_bounds(stl)
+    if not S.bounds_match(stl_box, body_box):
+        return tr('El STL no está en las coordenadas del diseño: las zonas no caerían sobre la pieza.\n'
+                  'STL (mm): %s\nCuerpo (cm): %s') % (stl_box, body_box)
+    with open(job_path, 'w', encoding='utf-8') as f:
+        json.dump(job, f, ensure_ascii=False)
+    if not exe:
+        return tr('Guardados %s y %s.\n\nSin slicer-paint. Para generar el 3MF, ejecútalo a mano:\n%s') % (
+            stl, job_path, ' '.join('"%s"' % a for a in S.command('slicer-paint', stl, job_path, out)))
+    open_in = None if s['sl_open'] == 'none' else s['sl_open']
+    _sl_run(S.command(exe, stl, job_path, out, open_in), out, os.path.splitext(target)[0] + '.log', open_in)
+    return ''
+
+
+def _sl_run(argv, out, log, open_in):
+    """Lanza slicer-paint sin esperar y avisa al acabar con SL_DONE_EVENT: Fusion sigue libre mientras."""
+    import subprocess
+    import threading
+
+    def wait():
+        try:
+            with open(log, 'w', encoding='utf-8', errors='replace') as f:
+                code = subprocess.call(argv, stdout=f, stderr=subprocess.STDOUT,
+                                       env=dict(os.environ, PYTHONIOENCODING='utf-8'),   # el log se lee en UTF-8
+                                       creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
+        except Exception as e:
+            code = -1
+            with open(log, 'a', encoding='utf-8') as f:
+                f.write(str(e))
+        _app.fireCustomEvent(SL_DONE_EVENT, json.dumps({'code': code, 'out': out, 'log': log, 'open': open_in}))
+
+    threading.Thread(target=wait, daemon=True).start()
+
+
+class _SlDoneHandler(adsk.core.CustomEventHandler):
+    def notify(self, args):
+        try:
+            r = json.loads(args.additionalInfo)
+            _sl_state['done'] = r
+            if r['code'] == -1:   # no se pudo lanzar: se vuelve a preguntar la próxima vez
+                _save_settings({'slicer_paint': ''})
+            if r['code'] != 0:
+                try:
+                    with open(r['log'], encoding='utf-8', errors='replace') as f:
+                        tail = f.read()[-1500:]
+                except OSError:
+                    tail = ''
+                _ui.messageBox(tr('slicer-paint ha fallado (código %d):') % r['code'] + '\n\n' + tail,
+                               tr('Enviar al laminador'))
+            elif not r['open']:
+                _ui.messageBox(tr('Guardado: %s') % r['out'], tr('Enviar al laminador'))
+        except Exception:
+            pass
+
+
+class _SlCreatedHandler(adsk.core.CommandCreatedEventHandler):
+    def notify(self, args):
+        try:
+            cmd = args.command
+            _sl_state['cmd'] = cmd
+            _sl_state.pop('html', None)
+            _sl_state.pop('run', None)
+            cmd.okButtonText = tr('Enviar')
+            cmd.cancelButtonText = tr('Cerrar')
+            cmd.setDialogInitialSize(380, 640)
+            cmd.setDialogMinimumSize(380, 300)
+            inputs = cmd.commandInputs
+            s = _load_settings()
+            VS = adsk.core.ValueInput.createByString
+
+            dd = inputs.addDropDownCommandInput('sl_body', tr('Cuerpo'), adsk.core.DropDownStyles.TextListDropDownStyle)
+            dd.tooltip = tr('El cuerpo que vas a imprimir. Los demás cuerpos visibles solo cuentan al medir la holgura.')
+            bodies = _sl_bodies(adsk.fusion.Design.cast(_app.activeProduct))
+            _sl_state['bodies'] = bodies
+            names = [n for n, _ in bodies]
+            last = s.get('sl_body') if s.get('sl_body') in names else (names[0] if names else None)
+            for name in names:
+                dd.listItems.add(name, name == last)
+            dd = inputs.addDropDownCommandInput('sl_bed', tr('Cama'), adsk.core.DropDownStyles.TextListDropDownStyle)
+            for key, label in BEDS:
+                dd.listItems.add(tr(label), key == s['sl_bed'])
+            sel = inputs.addSelectionInput('sl_face', tr('Cara sobre la cama'),
+                                           tr('Elige la cara plana que va sobre la cama.'))
+            sel.addSelectionFilter('PlanarFaces')
+            sel.setSelectionLimits(0, 1)
+
+            tips = {'sl_seam_on': tr('Aristas o caras donde poner la costura. Una arista solo vale si sube respecto '
+                                     'a las capas.'),
+                    'sl_seam_off': tr('Caras o aristas donde no puede ir la costura.'),
+                    'sl_sup_on': tr('Caras donde forzar soportes. Solo cuenta lo que mire hacia abajo una vez '
+                                    'orientada la pieza.'),
+                    'sl_sup_off': tr('Caras donde no puede haber soportes.')}
+            labels = {'sl_seam_on': tr('Forzar en'), 'sl_seam_off': tr('Prohibir en'),
+                      'sl_sup_on': tr('Forzar en'), 'sl_sup_off': tr('Bloquear en')}
+            for title, keys in ((tr('Costura'), ('sl_seam_on', 'sl_seam_off')),
+                                (tr('Soportes'), ('sl_sup_on', 'sl_sup_off'))):
+                grp = inputs.addGroupCommandInput('grp_' + keys[0], title)
+                grp.isExpanded = True
+                gi = grp.children
+                for key in keys:
+                    sel = gi.addSelectionInput(key, labels[key], tips[key])
+                    sel.addSelectionFilter('Faces')
+                    sel.addSelectionFilter('Edges')
+                    sel.setSelectionLimits(0, 0)
+                    sel.tooltip = tips[key]
+                if keys[0] != 'sl_seam_on':
+                    continue
+                gap = gi.addBoolValueInput('sl_gap', tr('Prohibir donde hay poca holgura'), True, '', bool(s['sl_gap']))
+                gap.tooltip = tr('Mide el espacio delante de cada cara, como Espesor y espacios, y prohíbe la costura '
+                                 'donde no llega al mínimo, toca otra pieza o se mete en ella: la costura abulta.')
+                gi.addValueInput('sl_gap_limit', tr('Espacio mínimo'), 'mm', VS('%s mm' % s['sl_gap_limit']))
+                dd = gi.addDropDownCommandInput('sl_res', tr('Resolución'), adsk.core.DropDownStyles.TextListDropDownStyle)
+                for key, label, _ in RESOLUTIONS:
+                    dd.listItems.add(tr(label), key == s['sl_res'])
+                btn = gi.addBoolValueInput('sl_measure', '', False, '', False)
+                btn.text = tr('Medir holgura')
+                btn.isFullWidth = True
+                btn.tooltip = tr('Mide ahora para ver en amarillo dónde se prohibirá la costura. Si no, se mide al '
+                                 'enviar.')
+            dd = inputs.addDropDownCommandInput('sl_open', tr('Abrir en'), adsk.core.DropDownStyles.TextListDropDownStyle)
+            for key, label in OPEN_IN:
+                dd.listItems.add(tr(label), key == s['sl_open'])
+            inputs.addTextBoxCommandInput('sl_info', tr('Resultado'), '', 9, True).isFullWidth = True
+            _sl_update_visibility(inputs)
+
+            for ev, h in ((cmd.executePreview, _SlPreviewHandler()), (cmd.inputChanged, _SlChangedHandler()),
+                          (cmd.execute, _SlExecuteHandler()), (cmd.preSelect, _SlPreSelectHandler()),
+                          (cmd.destroy, _SlDestroyHandler())):
+                ev.add(h)
+                _handlers.append(h)
+        except Exception:
+            _ui.messageBox(tr('Enviar al laminador: error') + '\n' + traceback.format_exc())
+
+
+class _SlPreviewHandler(adsk.core.CommandEventHandler):
+    def notify(self, args):
+        _sl_draw(args.command.commandInputs)
+
+
+class _SlChangedHandler(adsk.core.InputChangedEventHandler):
+    def notify(self, args):
+        if args.input.id == 'sl_info':
+            return
+        if args.input.id == 'sl_measure':
+            _sl_state['run'] = True   # lo atiende la vista previa que Fusion lanza a continuación
+            return
+        inputs = args.firingEvent.sender.commandInputs
+        _sl_update_visibility(inputs)
+        if args.input.id == 'sl_bed' and _choice(inputs, 'sl_bed', BEDS) == 'face':
+            inputs.itemById('sl_face').hasFocus = True
+
+
+class _SlPreSelectHandler(adsk.core.SelectionEventHandler):
+    """Fuera del campo Cuerpo, solo se puede elegir lo del cuerpo que se envía."""
+    def notify(self, args):
+        try:
+            body = _sl_body(args.firingEvent.sender.commandInputs)
+            if body and not _same_body(args.selection.entity, body):
+                args.isSelectable = False
+        except Exception:
+            pass
+
+
+class _SlExecuteHandler(adsk.core.CommandEventHandler):
+    def notify(self, args):
+        try:
+            design = adsk.fusion.Design.cast(_app.activeProduct)
+            inputs = args.command.commandInputs
+            msg = _sl_send(design, _sl_read(inputs), inputs)
+            _sl_state['sent'] = msg
+            if msg:
+                _ui.messageBox(msg, tr('Enviar al laminador'))
+        except Exception:
+            _ui.messageBox(tr('Enviar al laminador: error') + '\n' + traceback.format_exc())
+        finally:
+            _close_busy()
+
+
+class _SlDestroyHandler(adsk.core.CommandEventHandler):
+    def notify(self, args):
+        try:
+            if _sl_state.get('cmd') is not None and args.command != _sl_state['cmd']:
+                return   # se ha vuelto a pulsar el botón con el diálogo abierto: el nuevo ya está en marcha
+            _clear(SL_GROUP_ID)
+            _gap_cache.clear()
+            _sl_state.pop('cmd', None)
+            _sl_state.pop('html', None)
+            _app.activeViewport.refresh()
+        except Exception:
+            pass
+
+
 def _language():
     """'es' si Fusion está en castellano; si no, 'en'."""
     try:
@@ -1074,12 +1584,26 @@ def run(context):
         h = _ThKeepHandler()
         _app.registerCustomEvent(TH_KEEP_EVENT).add(h)
         _handlers.append(h)
+        sl_def = _ui.commandDefinitions.itemById(SL_CMD_ID)
+        if sl_def:
+            sl_def.deleteMe()
+        sl_def = _ui.commandDefinitions.addButtonDefinition(
+            SL_CMD_ID, tr('Enviar al laminador'),
+            tr('Exporta un cuerpo con su cama y con dónde forzar o prohibir la costura y los soportes, también donde '
+               'hay poca holgura, y lo abre en el laminador con slicer-paint.'),
+            os.path.join(HERE, 'resources', 'slicer'))
+        h = _SlCreatedHandler()
+        sl_def.commandCreated.add(h)
+        _handlers.append(h)
+        _app.unregisterCustomEvent(SL_DONE_EVENT)
+        h = _SlDoneHandler()
+        _app.registerCustomEvent(SL_DONE_EVENT).add(h)
+        _handlers.append(h)
         for pid in PANEL_IDS:
             panel = _panel(pid)
-            if panel and not panel.controls.itemById(CMD_ID):
-                panel.controls.addCommand(cmd_def)
-            if panel and not panel.controls.itemById(TH_CMD_ID):
-                panel.controls.addCommand(th_def)
+            for cid, cdef in ((CMD_ID, cmd_def), (TH_CMD_ID, th_def), (SL_CMD_ID, sl_def)):
+                if panel and not panel.controls.itemById(cid):
+                    panel.controls.addCommand(cdef)
     except Exception:
         _ui.messageBox(tr('Voladizos FDM: error al arrancar') + '\n' + traceback.format_exc())
 
@@ -1095,13 +1619,15 @@ def stop(context):
                 _ui.commandTerminated.remove(h)
         _app.unregisterCustomEvent(KEEP_EVENT)
         _app.unregisterCustomEvent(TH_KEEP_EVENT)
+        _clear(SL_GROUP_ID)
+        _app.unregisterCustomEvent(SL_DONE_EVENT)
         for pid in PANEL_IDS:
             panel = _panel(pid)
-            for cid in (CMD_ID, TH_CMD_ID):
+            for cid in (CMD_ID, TH_CMD_ID, SL_CMD_ID):
                 ctrl = panel.controls.itemById(cid) if panel else None
                 if ctrl:
                     ctrl.deleteMe()
-        for cid in (CMD_ID, TH_CMD_ID):
+        for cid in (CMD_ID, TH_CMD_ID, SL_CMD_ID):
             cmd_def = _ui.commandDefinitions.itemById(cid)
             if cmd_def:
                 cmd_def.deleteMe()

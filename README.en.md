@@ -110,6 +110,16 @@ To update, run the new version's `instalar.bat`: the last dialog values are kept
 
 Copy the `FDMOverhang` folder from the zip to `~/Library/Application Support/Autodesk/Autodesk Fusion 360/API/AddIns/`.
 
+### slicer-paint (for *Send to slicer*)
+
+Optional: without it, *Send to slicer* only saves the STL and the part file. It needs Python 3.10 or later and [pipx](https://pipx.pypa.io):
+
+```powershell
+pipx install git+https://github.com/buho29/slicer-paint
+```
+
+The add-in looks for it on the PATH. If it is not there, the first time you send a part it asks where `slicer-paint.exe` is and remembers it. With pipx on Windows it is usually in `%USERPROFILE%\.local\bin`.
+
 ### From the repo (development)
 
 With Fusion closed:
