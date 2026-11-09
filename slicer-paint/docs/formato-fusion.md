@@ -5,7 +5,7 @@ Lo que se elige o se mide en Fusion llega a slicer-paint como JSON, junto con el
 | | Selección (versión 2) | Pieza (versión 3) |
 | --- | --- | --- |
 | Lo escribe | `write_selection` de [fusion/export_selection.py](../fusion/export_selection.py) | Un add-in, como el botón *Enviar al laminador* de fdm-overhang |
-| Contiene | Una selección | Cara de cama y una selección por papel |
+| Contiene | Una selección | Cara de cama, una selección por papel y los [colores](#colores) |
 | Se usa con | `--seam fusion:`, `--seam-block fusion:`, `--support-enforce fusion:`, `--support-block fusion:` | `--fusion ARCHIVO.json` |
 | Papel | Lo decide la opción | Va dentro del archivo |
 
@@ -50,7 +50,8 @@ Se admiten también las claves informativas `version`, `units` (`"mm"`) y `body`
   "body": "Sinfín",
   "bed": [0.0, 0.0, -1.0],
   "seam":    {"enforce": SELECCIÓN, "block": SELECCIÓN},
-  "support": {"enforce": SELECCIÓN, "block": SELECCIÓN}
+  "support": {"enforce": SELECCIÓN, "block": SELECCIÓN},
+  "color":   {"body": FILAMENTO, "paint": [ZONA DE COLOR, ...]}
 }
 ```
 
@@ -63,8 +64,9 @@ Se admiten también las claves informativas `version`, `units` (`"mm"`) y `body`
 | `seam.enforce` | No | Dónde forzar la costura |
 | `seam.block` | No | Dónde prohibirla: aquí van las zonas de poca holgura |
 | `support.enforce`, `support.block` | No | Dónde forzar o bloquear soportes. Solo actúa en lo que mira hacia abajo una vez orientada la pieza |
+| `color` | No | Filamento del cuerpo y caras pintadas con otro. Ver [Colores](#colores) |
 
-Tiene que haber al menos `bed` o una selección que no esté vacía. Una clave que no está en la tabla es un error, para que una errata no pase sin avisar.
+Tiene que haber al menos `bed`, una selección que no esté vacía o `color`. Una clave que no está en la tabla es un error, para que una errata no pase sin avisar.
 
 **Cómo se combina con las opciones de la línea de comandos:**
 
@@ -91,6 +93,31 @@ Cama en el plano XY y prohibir la costura en un trozo de flanco:
   }
 }
 ```
+
+## Colores
+
+Para imprimir con varios filamentos (AMS): el cuerpo va con un filamento y algunas caras con otros. slicer-paint pinta esas caras con `paint_color`, la misma pintura que deja la herramienta de pintar color de Orca y Bambu Studio.
+
+```json
+"color": {
+  "body":  {"filament": 1, "rgb": "#2060FF"},
+  "paint": [
+    {"filament": 2, "rgb": "#FF0000", "faces": [CARA, ...], "patches": [ZONA, ...]}
+  ]
+}
+```
+
+| Clave | Obligatoria | Qué es |
+| --- | --- | --- |
+| `body` | No | Filamento del cuerpo: lo que no se pinta. Por defecto, el 1 |
+| `paint` | No | Zonas de color. Cada una es una [selección](#selección) con `faces` y `patches`, sin `edges`, y su `filament` |
+| `filament` | Sí | Número de filamento en el laminador, de 1 a 17 |
+| `rgb` | No | Color como `#RRGGBB`. Solo sirve para los mensajes: el laminador usa el color del filamento que tenga en ese número |
+
+- El filamento del cuerpo se escribe como filamento del objeto (`extruder`), aunque el 3MF que se reescribe tuviera otro.
+- Si dos zonas se pisan, gana la última.
+- El 3MF **no lleva los colores de los filamentos**: con destino Orca no puede llevar ajustes de proyecto. slicer-paint escribe qué color va en cada filamento («Colores: filamento 1 #2060FF (cuerpo); filamento 2 #FF0000 (12.0 mm²)») y avisa si hacen falta más de uno.
+- Cada triángulo entero se escribe con su filamento: `4` es el 1, `8` el 2, `0C` el 3 y `1C` el 4 (de 3 en adelante, `C` y después el número menos 3, al revés). Las del 3 y el 4 están comprobadas con un cubo pintado en Orca.
 
 ## Placa
 

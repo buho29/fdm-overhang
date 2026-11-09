@@ -1,7 +1,9 @@
 """Pintura por partes de un triángulo: el árbol de TriangleSelector y su cadena hexadecimal.
 
 Cada triángulo de la malla se guarda como un árbol, en un flujo de nibbles:
-- Hoja: 2 bits a cero y 2 bits de estado (4 es forzar y 8 es bloquear).
+- Hoja: 2 bits a cero y 2 bits de estado (4 es forzar y 8 es bloquear). Un estado de 3 o más
+  (el filamento 3 o siguientes en paint_color) lleva 0b1100 y después un nibble con estado − 3:
+  el filamento 3 es "0C" y el 4, "1C" (comprobado con un cubo pintado en Orca).
 - División: 2 bits con el número de lados divididos y 2 con special_side, seguidos
   de los hijos del último al primero.
 La cadena se escribe al revés que el flujo, de modo que la raíz es el último carácter.
@@ -19,6 +21,9 @@ from scipy.spatial import cKDTree
 
 # Estados de pintura. Coinciden con EnforcerBlockerType de los slicers.
 NONE, ENFORCE, BLOCK = 0, 1, 2
+# Mayor estado de una hoja: el nibble que sigue a 0b1100 llega a 14. Con 15 empezaría una cadena
+# de nibbles que no se ha comprobado en ningún slicer.
+MAX_STATE = 3 + 14
 # Estado de face_states() para un triángulo pintado solo en parte.
 MIXED = -1
 DEFAULT_RESOLUTION = 0.25
@@ -51,8 +56,12 @@ def encode(node: Node) -> str:
             nibbles.append(current.sides | (current.special << 2))
             for child in reversed(current.children):
                 visit(child)
-        else:
+        elif current.state < 3:
             nibbles.append(current.state << 2)
+        else:
+            if current.state > MAX_STATE:
+                raise ValueError(f"Estado de pintura {current.state} fuera de rango (máximo {MAX_STATE})")
+            nibbles.extend((0b1100, current.state - 3))
 
     visit(node)
     return "".join(f"{n:X}" for n in reversed(nibbles))
@@ -71,9 +80,15 @@ def decode(text: str) -> Node:
         position += 1
         sides, high = value & 0b11, value >> 2
         if sides == 0:
-            if high == 0b11:
-                raise ValueError(f"Estado de varios colores no admitido: {text[:40]!r}")
-            return Node(state=high)
+            if high < 3:
+                return Node(state=high)
+            if position >= len(nibbles):
+                raise ValueError(f"Cadena de pintura incompleta: {text[:40]!r}")
+            extra = nibbles[position]
+            position += 1
+            if extra == 0b1111:
+                raise ValueError(f"Estado de pintura de más de {MAX_STATE} no admitido: {text[:40]!r}")
+            return Node(state=3 + extra)
         # En el flujo van del último al primero.
         children = [read() for _ in range(sides + 1)]
         return Node(sides=sides, special=high, children=children[::-1])
@@ -331,7 +346,8 @@ def paint_box(node: Node, triangle: np.ndarray, box: tuple[np.ndarray, np.ndarra
 
 
 class PaintLayer:
-    """Pintura de un tipo (soportes o costura) para toda la malla."""
+    """Pintura de un tipo (soportes, costura o color) para toda la malla. En el color, el estado
+    es el número de filamento."""
 
     def __init__(self, face_count: int):
         self.face_count = face_count
@@ -400,19 +416,21 @@ class PaintLayer:
         return states
 
     def areas(self, triangles: np.ndarray) -> dict[int, float]:
-        """Área pintada por estado."""
+        """Área pintada por estado; forzar y bloquear están siempre, aunque sea con 0."""
         pieces: dict[int, list[np.ndarray]] = {ENFORCE: [], BLOCK: []}
         whole: dict[int, list[int]] = {ENFORCE: [], BLOCK: []}
         for index, node in self.nodes.items():
             if not node.is_split:
-                if node.state in whole:
-                    whole[node.state].append(index)
+                if node.state != NONE:
+                    whole.setdefault(node.state, []).append(index)
+                    pieces.setdefault(node.state, [])
                 continue
             for leaf, state in leaves(triangles[index], node):
-                if state in pieces:
-                    pieces[state].append(leaf)
+                if state != NONE:
+                    pieces.setdefault(state, []).append(leaf)
+                    whole.setdefault(state, [])
         total = {}
-        for state in pieces:
+        for state in sorted(pieces):
             parts = [triangles[whole[state]]] + ([np.array(pieces[state])] if pieces[state] else [])
             t = np.concatenate(parts).reshape(-1, 3, 3)
             total[state] = float(np.linalg.norm(np.cross(t[:, 1] - t[:, 0], t[:, 2] - t[:, 0]), axis=1).sum() / 2)

@@ -201,7 +201,19 @@ def test_split_string_puts_the_root_last_and_children_reversed():
     assert encode(decode("40803")) == "40803"
 
 
-@pytest.mark.parametrize("text", ["", "3", "03", "44"])
+def test_filaments_from_three_on_use_a_second_nibble():
+    # Cadenas que escribió Orca al pintar un cubo con los filamentos 3 y 4.
+    assert encode(Node(state=3)) == "0C"
+    assert encode(Node(state=4)) == "1C"
+    assert decode("0C").state == 3 and decode("1C").state == 4
+    assert encode(Node(state=17)) == "EC" and decode("EC").state == 17
+    node = Node(sides=1, children=[Node(state=5), Node(state=1)])
+    assert encode(decode(encode(node))) == encode(node)
+    with pytest.raises(ValueError):
+        encode(Node(state=18))
+
+
+@pytest.mark.parametrize("text", ["", "3", "03", "44", "C", "FC"])
 def test_decode_rejects_malformed_strings(text):
     with pytest.raises(ValueError):
         decode(text)
@@ -739,6 +751,75 @@ def test_job_file_is_not_a_selection(tmp_path):
     job = _write_job(tmp_path / "pieza.json", bed=[0, 0, -1])
     with pytest.raises(ValueError, match="--fusion"):
         selection.load_selection(job)
+
+
+# Colores: el filamento del cuerpo y caras pintadas con otro.
+def _prism_side(mesh, normal_x=1):
+    """Cara lateral del prisma que mira hacia +X, más dividida, como la daría Fusion."""
+    side = np.flatnonzero(np.isclose(mesh.face_normals[:, 0], normal_x, atol=1e-6)
+                          & (mesh.face_normals[:, 2] == 0))
+    vertices, triangles = trimesh.remesh.subdivide_to_size(mesh.vertices, mesh.faces[side], 3.0)
+    return side, {"vertices": vertices.tolist(), "triangles": triangles.tolist(),
+                  "area": float(mesh.area_faces[side].sum())}
+
+
+def test_color_paints_a_face_with_its_filament():
+    mesh = _prism()
+    side, face = _prism_side(mesh)
+    plan = selection.parse_color({"body": {"filament": 2, "rgb": "#0000ff"},
+                                  "paint": [{"filament": 3, "rgb": "#FF0000", "faces": [face]}]}, "p.json")
+    warnings: list[str] = []
+    layer = paint.paint_colors(mesh, plan, warnings=warnings)
+    assert warnings == []
+    assert sorted(layer.nodes) == sorted(side.tolist())
+    assert {encode(n) for n in layer.nodes.values()} == {"0C"}
+    assert layer.areas(mesh.triangles)[3] == pytest.approx(face["area"])
+    assert plan.filaments() == {2: "#0000FF", 3: "#FF0000"}
+
+
+@pytest.mark.parametrize("content, message", [
+    ({"paint": [{"filament": 0, "faces": []}]}, "filament"),
+    ({"paint": [{"filament": 18, "faces": []}]}, "filament"),
+    ({"paint": [{"filament": True, "faces": []}]}, "filament"),
+    ({"body": {"filament": 1, "rgb": "rojo"}}, "rgb"),
+    ({"body": {"filament": 1, "color": "#FF0000"}}, "body"),
+    ({"paint": [{"filament": 2, "edges": [[[0, 0, 0], [1, 0, 0]]]}]}, "aristas"),
+    ({"paint": [{"filament": 2, "face": []}]}, "claves desconocidas"),
+    ({"paint": {}}, "lista"),
+    ({"bodies": {}}, "body y paint"),
+])
+def test_color_rejects_malformed_content(content, message):
+    with pytest.raises(ValueError, match=message):
+        selection.parse_color(content, "p.json")
+
+
+def test_color_with_nothing_to_paint_is_ignored():
+    assert selection.parse_color({"paint": [{"filament": 2, "faces": []}]}, "p.json") is None
+
+
+def test_cli_job_writes_colors_and_the_body_filament(tmp_path, capsys):
+    stl = tmp_path / "prisma.stl"
+    mesh = _prism()
+    mesh.export(stl)
+    side, face = _prism_side(mesh)
+    job = _write_job(tmp_path / "pieza.json", body="Prisma", bed=[0, 0, -1],
+                     color={"body": {"filament": 2, "rgb": "#0000FF"},
+                            "paint": [{"filament": 4, "rgb": "#FF0000", "faces": [face]}]})
+    out = tmp_path / "p.3mf"
+    assert cli.main([str(stl), "-o", str(out), "--fusion", str(job)]) == 0
+    [read] = read_painted(out)
+    painted = read.paint["paint_color"]
+    assert set(painted.values()) == {"1C"}
+    assert len(painted) == len(side)
+    # Los triángulos pintados miran hacia +X también en la cama.
+    corners = read.vertices[read.faces[list(painted)]]
+    normals = np.cross(corners[:, 1] - corners[:, 0], corners[:, 2] - corners[:, 0])
+    assert np.all(normals[:, 0] > 0) and np.allclose(normals[:, 1:], 0, atol=1e-6)
+    with zipfile.ZipFile(out) as z:
+        assert '<metadata key="extruder" value="2"/>' in z.read("Metadata/model_settings.config").decode()
+    captured = capsys.readouterr()
+    assert "filamento 2 #0000FF (cuerpo); filamento 4 #FF0000" in captured.out
+    assert "al menos 4 filamentos" in captured.err
 
 
 # Placa: varias piezas en un solo 3MF.

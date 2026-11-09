@@ -2,12 +2,13 @@
 
 Una selección (versión 2) tiene aristas y caras, y su papel lo decide la opción que la usa:
 --seam, --seam-block, --support-enforce o --support-block. El archivo de pieza (versión 3) lo
-lleva todo junto: la cara de cama y una selección para cada papel. Los dos formatos están
-descritos en docs/formato-fusion.md.
+lleva todo junto: la cara de cama, una selección para cada papel y los colores. Los dos formatos
+están descritos en docs/formato-fusion.md.
 """
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -16,8 +17,13 @@ import numpy as np
 DEFAULT_RADIUS = 0.5
 JOB_VERSION = 3
 _SELECTION_KEYS = {"edges", "faces", "patches"}
-_JOB_KEYS = {"version", "units", "body", "bed", "seam", "support"}
+_JOB_KEYS = {"version", "units", "body", "bed", "seam", "support", "color"}
 _ROLES = ("enforce", "block")
+_COLOR_KEYS = {"body", "paint"}
+_FILAMENT_KEYS = {"filament", "rgb"}
+# Filamentos que se pueden pintar: ver selector.MAX_STATE.
+MAX_FILAMENT = 17
+_RGB = re.compile(r"#[0-9A-Fa-f]{6}")
 
 
 @dataclass
@@ -55,6 +61,34 @@ class Selection:
 
 
 @dataclass
+class ColorZone:
+    """Caras o zonas de un filamento. rgb, como #RRGGBB, solo sirve para los mensajes."""
+    filament: int
+    rgb: str | None
+    selection: Selection
+
+
+@dataclass
+class ColorPlan:
+    """Colores de la pieza: el filamento del cuerpo y las zonas pintadas con otro."""
+    body_filament: int = 1
+    body_rgb: str | None = None
+    zones: list[ColorZone] = field(default_factory=list)
+
+    def moved(self, transform) -> "ColorPlan":
+        return ColorPlan(self.body_filament, self.body_rgb,
+                         [ColorZone(z.filament, z.rgb, z.selection.moved(transform)) for z in self.zones])
+
+    def filaments(self) -> dict[int, str | None]:
+        """Filamentos usados, con su color si se conoce."""
+        used = {self.body_filament: self.body_rgb}
+        for zone in self.zones:
+            if used.get(zone.filament) is None:
+                used[zone.filament] = zone.rgb
+        return dict(sorted(used.items()))
+
+
+@dataclass
 class Job:
     """Archivo de pieza: cara de cama y una selección por papel, en las coordenadas del STL."""
     body: str | None = None
@@ -62,6 +96,7 @@ class Job:
     bed: np.ndarray | None = None
     seam: dict[str, Selection] = field(default_factory=dict)
     support: dict[str, Selection] = field(default_factory=dict)
+    color: ColorPlan | None = None
 
 
 def _mesh(raw: dict, where: str) -> tuple[np.ndarray, np.ndarray]:
@@ -77,12 +112,13 @@ def _mesh(raw: dict, where: str) -> tuple[np.ndarray, np.ndarray]:
     return vertices, triangles
 
 
-def parse_selection(data, path: str | Path, where: str = "") -> Selection:
-    """Selección a partir de un diccionario con edges, faces y patches; puede quedar vacía."""
+def parse_selection(data, path: str | Path, where: str = "", extra_keys=frozenset()) -> Selection:
+    """Selección a partir de un diccionario con edges, faces y patches; puede quedar vacía.
+    extra_keys son otras claves que admite el diccionario y que lee quien llama."""
     prefix = f"{path}{where}"
     if not isinstance(data, dict):
         raise ValueError(f"{prefix}: se esperaba un objeto con edges, faces o patches")
-    unknown = set(data) - _SELECTION_KEYS - {"version", "units", "body"}
+    unknown = set(data) - _SELECTION_KEYS - {"version", "units", "body"} - set(extra_keys)
     if unknown:
         raise ValueError(f"{prefix}: claves desconocidas {sorted(unknown)}")
     selection = Selection()
@@ -101,6 +137,46 @@ def parse_selection(data, path: str | Path, where: str = "") -> Selection:
     for raw in data.get("patches", []):
         selection.patches.append(Patch(*_mesh(raw, f"{prefix}: zona")))
     return selection
+
+
+def _filament(data: dict, prefix: str) -> tuple[int, str | None]:
+    """filament y rgb de un objeto de la clave color."""
+    filament = data.get("filament")
+    if isinstance(filament, bool) or not isinstance(filament, int) or not 1 <= filament <= MAX_FILAMENT:
+        raise ValueError(f"{prefix}: filament tiene que ser un número de 1 a {MAX_FILAMENT}")
+    rgb = data.get("rgb")
+    if rgb is not None and not (isinstance(rgb, str) and _RGB.fullmatch(rgb)):
+        raise ValueError(f"{prefix}: rgb tiene que ser un color como #FF0000")
+    return filament, rgb.upper() if rgb else None
+
+
+def parse_color(data, path: str | Path) -> ColorPlan | None:
+    """Clave color del archivo de pieza; None si no pinta nada ni cambia el filamento del cuerpo."""
+    prefix = f"{path} (color)"
+    if not isinstance(data, dict) or set(data) - _COLOR_KEYS:
+        raise ValueError(f"{prefix}: se esperaba un objeto con body y paint")
+    plan = ColorPlan()
+    if data.get("body") is not None:
+        body = data["body"]
+        if not isinstance(body, dict) or set(body) - _FILAMENT_KEYS:
+            raise ValueError(f"{prefix}: body tiene que ser un objeto con filament y rgb")
+        plan.body_filament, plan.body_rgb = _filament(body, f"{prefix}: body")
+    zones = data.get("paint", [])
+    if not isinstance(zones, list):
+        raise ValueError(f"{prefix}: paint tiene que ser una lista")
+    for number, raw in enumerate(zones, 1):
+        where = f" (color.paint {number})"
+        if not isinstance(raw, dict):
+            raise ValueError(f"{path}{where}: se esperaba un objeto con filament y faces")
+        filament, rgb = _filament(raw, f"{path}{where}")
+        chosen = parse_selection(raw, path, where, _FILAMENT_KEYS)
+        if chosen.edges:
+            raise ValueError(f"{path}{where}: el color no admite aristas, solo faces y patches")
+        if not chosen.is_empty():
+            plan.zones.append(ColorZone(filament, rgb, chosen))
+    if not plan.zones and data.get("body") is None:
+        return None
+    return plan
 
 
 def _read_json(path: str | Path):
@@ -144,6 +220,8 @@ def load_job(path: str | Path) -> Job:
                 chosen = parse_selection(roles[role], path, f" ({kind}.{role})")
                 if not chosen.is_empty():
                     getattr(job, kind)[role] = chosen
-    if job.bed is None and not job.seam and not job.support:
-        raise ValueError(f"{path} no tiene cama, costura ni soportes")
+    if data.get("color") is not None:
+        job.color = parse_color(data["color"], path)
+    if job.bed is None and not job.seam and not job.support and job.color is None:
+        raise ValueError(f"{path} no tiene cama, costura, soportes ni colores")
     return job

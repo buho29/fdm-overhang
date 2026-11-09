@@ -1,6 +1,6 @@
 # slicer-paint
 
-Orienta una o varias piezas, pinta soportes y costura y genera un 3MF que se abre en OrcaSlicer o Bambu Studio sin fork ni plugin.
+Orienta una o varias piezas, pinta soportes, costura y colores y genera un 3MF que se abre en OrcaSlicer o Bambu Studio sin fork ni plugin.
 
 ## Instalación
 
@@ -26,7 +26,7 @@ slicer-paint pieza.stl -o pieza.3mf --support-overhang 45 --seam back --open orc
 | Opción | Qué hace |
 | --- | --- |
 | `--plate` | Archivo de placa con varias piezas, cada una con su STL y su archivo de pieza; todas van a un solo 3MF. Ver [Varias piezas en una placa](#varias-piezas-en-una-placa) |
-| `--fusion` | Archivo de pieza de Fusion (versión 3) con la cara de cama, la costura y los soportes; se suma a las demás opciones. Ver [docs/formato-fusion.md](docs/formato-fusion.md) |
+| `--fusion` | Archivo de pieza de Fusion (versión 3) con la cara de cama, la costura, los soportes y los colores; se suma a las demás opciones. Ver [docs/formato-fusion.md](docs/formato-fusion.md) |
 | `--orient` | `auto` (por defecto), `none`, `face:-z` o `face:x,y,z` (la cara con esa normal a la cama) o `rot:rx,ry,rz` en grados; gana a la cama de `--fusion` |
 | `--overhang-limit` | Voladizo admitido al puntuar orientaciones; 45° por defecto |
 | `--support-overhang N` | Fuerza soportes en las caras que vuelan más de N° (0° es una pared y 90° un techo) |

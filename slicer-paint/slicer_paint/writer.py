@@ -1,4 +1,4 @@
-"""Escritura de 3MF con pintura de costura y soportes por triángulo.
+"""Escritura de 3MF con pintura de costura, soportes y color por triángulo.
 
 La estructura es la mínima que Bambu Studio y OrcaSlicer cargan sin avisos y
 respetando los ajustes por objeto (comprobado en spikes/ con ambos slicers):
@@ -57,7 +57,8 @@ _LINES_PER_WRITE = 100_000
 @dataclass
 class PlateObject:
     """Una pieza de la placa. Los vértices van ya orientados; center es dónde queda el centro
-    de su caja en la cama."""
+    de su caja en la cama. En color, el estado de cada triángulo es su número de filamento; el
+    resto lleva el del objeto (el ajuste extruder)."""
     vertices: np.ndarray
     faces: np.ndarray
     support: PaintLayer | np.ndarray | None = None
@@ -65,6 +66,7 @@ class PlateObject:
     name: str = "pieza"
     settings: dict[str, str] = field(default_factory=dict)
     center: tuple[float, float] = P1S_BED_CENTER
+    color: PaintLayer | np.ndarray | None = None
 
 
 def _ids(number: int) -> tuple[int, int]:
@@ -85,7 +87,8 @@ def _as_layer(paint: PaintLayer | np.ndarray | None) -> PaintLayer | None:
 
 
 def _write_mesh(out: io.TextIOBase, vertices: np.ndarray, faces: np.ndarray,
-                support: PaintLayer | None, seam: PaintLayer | None) -> None:
+                support: PaintLayer | None, seam: PaintLayer | None,
+                color: PaintLayer | None = None) -> None:
     """Escribe <mesh> en streaming; las mallas pueden tener millones de triángulos."""
     out.write("<mesh>\n<vertices>\n")
     vertex_list = vertices.tolist()   # floats de Python: se formatean igual y mucho más deprisa
@@ -93,7 +96,8 @@ def _write_mesh(out: io.TextIOBase, vertices: np.ndarray, faces: np.ndarray,
         out.write("".join([f'<vertex x="{x:.8g}" y="{y:.8g}" z="{z:.8g}"/>\n'
                            for x, y, z in vertex_list[first:first + _LINES_PER_WRITE]]))
     out.write("</vertices>\n<triangles>\n")
-    painted = set(support.nodes if support else ()) | set(seam.nodes if seam else ())
+    painted = (set(support.nodes if support else ()) | set(seam.nodes if seam else ())
+               | set(color.nodes if color else ()))
     face_list = faces.tolist()
     for first in range(0, len(face_list), _LINES_PER_WRITE):
         lines = []
@@ -106,6 +110,9 @@ def _write_mesh(out: io.TextIOBase, vertices: np.ndarray, faces: np.ndarray,
                     attrs += f' paint_supports="{support_text}"'
                 if seam_text:
                     attrs += f' paint_seam="{seam_text}"'
+                color_text = color.string(i) if color else None
+                if color_text:
+                    attrs += f' paint_color="{color_text}"'
             lines.append(f'<triangle v1="{a}" v2="{b}" v3="{c}"{attrs}/>\n')
         out.write("".join(lines))
     out.write("</triangles>\n</mesh>\n")
@@ -169,7 +176,8 @@ def _write_object(z: zipfile.ZipFile, number: int, obj: PlateObject) -> None:
         out = io.TextIOWrapper(raw, encoding="utf-8", newline="\n")
         out.write(f'{XML_HEAD}<model {_MODEL_ATTRS}>\n{_VERSION_META}<resources>\n'
                   f'<object id="{_ids(number)[0]}" p:UUID="{uuid.uuid4()}" type="model">\n')
-        _write_mesh(out, obj.vertices, obj.faces, _as_layer(obj.support), _as_layer(obj.seam))
+        _write_mesh(out, obj.vertices, obj.faces, _as_layer(obj.support), _as_layer(obj.seam),
+                    _as_layer(obj.color))
         out.write("</object>\n</resources>\n<build/>\n</model>\n")
         out.flush()
         out.detach()
@@ -215,7 +223,7 @@ def write_plate(path: str | Path, objects: list[PlateObject],
     if not objects:
         raise ValueError("Una placa necesita al menos una pieza")
     objects = [PlateObject(np.asarray(o.vertices, dtype=float), np.asarray(o.faces, dtype=np.int64),
-                           o.support, o.seam, o.name, o.settings, o.center) for o in objects]
+                           o.support, o.seam, o.name, o.settings, o.center, o.color) for o in objects]
     main_meta = _VERSION_META
     if project_settings is not None and metadata is None:
         metadata = [("Application", application_version(project_settings))]

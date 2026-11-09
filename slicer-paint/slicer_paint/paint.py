@@ -1,4 +1,4 @@
-"""Reglas de pintura de soportes y costura, sobre la malla ya orientada."""
+"""Reglas de pintura de soportes, costura y color, sobre la malla ya orientada."""
 from __future__ import annotations
 
 import numpy as np
@@ -6,7 +6,7 @@ import trimesh
 from scipy.spatial import cKDTree
 
 from .orient import overhang_mask
-from .selection import Face, Patch, Selection
+from .selection import ColorPlan, Face, Patch, Selection
 from .selector import BLOCK, DEFAULT_RESOLUTION, ENFORCE, Capsule, PaintLayer
 from .selector import Patch as PatchRegion
 
@@ -96,6 +96,24 @@ def paint_seam(mesh: trimesh.Trimesh, rule: str | None,
         layer.apply_box(mesh.triangles, wall_mask(mesh), parse_box(rule[4:]), ENFORCE, resolution)
     else:
         raise ValueError(f"Regla de costura no válida: {rule!r}. Usa back o box:x0,y0,z0,x1,y1,z1")
+    return layer
+
+
+def paint_colors(mesh: trimesh.Trimesh, plan: ColorPlan,
+                 resolution: float = DEFAULT_RESOLUTION, warnings: list[str] | None = None) -> PaintLayer:
+    """Pinta cada zona de color con su número de filamento; lo demás queda con el del cuerpo.
+
+    El plan debe estar ya en coordenadas de la pieza orientada. Si dos zonas se pisan, gana la
+    última.
+    """
+    layer = PaintLayer(len(mesh.faces))
+    for number, zone in enumerate(plan.zones, 1):
+        try:
+            found = paint_selection(layer, mesh, zone.selection, zone.filament, 1.0, resolution)
+        except ValueError as exc:
+            raise ValueError(f"Color {number}: {exc}") from exc
+        if warnings is not None:
+            warnings += [f"Color {number}: {w}" for w in found]
     return layer
 
 

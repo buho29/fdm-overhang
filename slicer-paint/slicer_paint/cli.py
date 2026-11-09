@@ -1,4 +1,4 @@
-"""Línea de comandos: orienta una o varias piezas, pinta soportes y costura y genera el 3MF."""
+"""Línea de comandos: orienta una o varias piezas, pinta soportes, costura y color y genera el 3MF."""
 from __future__ import annotations
 
 import argparse
@@ -45,8 +45,8 @@ def build_parser() -> argparse.ArgumentParser:
                              "pieza, en un solo 3MF")
     parser.add_argument("--part", help="pieza dentro de un 3MF, por su archivo interno")
     parser.add_argument("--fusion", metavar="ARCHIVO.json",
-                        help="archivo de pieza de Fusion (versión 3): cara de cama, costura y "
-                             "soportes; se suma a las demás opciones y --orient gana a su cama")
+                        help="archivo de pieza de Fusion (versión 3): cara de cama, costura, "
+                             "soportes y colores; se suma a las demás opciones y --orient gana a su cama")
     parser.add_argument("--orient", default=None,
                         help="auto (por defecto), none, face:-z o face:x,y,z (la cara con esa normal a la "
                              "cama) o rot:rx,ry,rz en grados")
@@ -151,6 +151,9 @@ class PreparedPart:
     chosen: orient.OrientationScore
     support: PaintLayer
     seam: PaintLayer
+    # Colores del archivo de pieza y su pintura, con el filamento de cada triángulo.
+    color_plan: selection.ColorPlan | None = None
+    color: PaintLayer | None = None
 
 
 # Opciones que solo tienen sentido para una pieza; con --plate van en el archivo de cada una.
@@ -193,7 +196,11 @@ def prepare_part(args: argparse.Namespace, name: str, mesh: trimesh.Trimesh,
         + job_zone(job, "support", "block", mesh, chosen.rotation),
         args.paint_resolution, warnings)
     seam = paint_seam(args, mesh, chosen.rotation, oriented, warnings, job)
-    return PreparedPart(name, oriented, chosen, support, seam)
+    plan = color = None
+    if job is not None and job.color is not None:
+        plan = job.color.moved(lambda points: orient.transform_points(points, mesh, chosen.rotation))
+        color = paint.paint_colors(oriented, plan, args.paint_resolution, warnings)
+    return PreparedPart(name, oriented, chosen, support, seam, plan, color)
 
 
 def prepare_plate(args: argparse.Namespace) -> list[PreparedPart]:
@@ -234,8 +241,11 @@ def part_settings(args: argparse.Namespace, part: PreparedPart,
                   kept: dict[str, str] | None = None) -> dict[str, str]:
     """Ajustes del objeto: los conservados (kept) y, si la pieza tiene pintura de soportes, los
     soportes activados. Su tipo (normal o árbol, manual o automático) es el conservado, salvo que
-    se pida otro con --support-style o --support-mode."""
+    se pida otro con --support-style o --support-mode. Con colores, el filamento del objeto es el
+    del cuerpo, aunque se hubiera guardado otro."""
     settings = dict(kept or {})
+    if part.color_plan is not None:
+        settings["extruder"] = str(part.color_plan.body_filament)
     if not part.support.is_painted():
         return settings
     settings["enable_support"] = "1"
@@ -257,6 +267,19 @@ def print_summary(args: argparse.Namespace, part: PreparedPart) -> None:
     print(f"Soportes: forzados {support_areas[ENFORCE]:.1f} mm², "
           f"bloqueados {support_areas[BLOCK]:.1f} mm²; "
           f"costura: forzada {seam_areas[ENFORCE]:.1f} mm², bloqueada {seam_areas[BLOCK]:.1f} mm²")
+    if part.color_plan is not None:
+        print("Colores: " + color_summary(part))
+
+
+def color_summary(part: PreparedPart) -> str:
+    """Qué filamento lleva cada color, para cargar los carretes en ese orden."""
+    plan = part.color_plan
+    areas = part.color.areas(part.oriented.triangles) if part.color else {}
+    text = []
+    for filament, rgb in plan.filaments().items():
+        what = "cuerpo" if filament == plan.body_filament else f"{areas.get(filament, 0.0):.1f} mm²"
+        text.append(f"filamento {filament}{f' {rgb}' if rgb else ''} ({what})")
+    return "; ".join(text)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -289,7 +312,7 @@ def main(argv: list[str] | None = None) -> int:
     kept_objects = previous.objects if previous else {}
     write_plate(output, [PlateObject(p.oriented.vertices, p.oriented.faces, p.support, p.seam,
                                      p.name, part_settings(args, p, kept_objects.get(p.name)),
-                                     center)
+                                     center, p.color)
                          for p, center in zip(parts, centers)], project_settings,
                 metadata=previous.metadata if previous and not args.project_settings else None,
                 plate_settings=previous.plate if previous else None)
@@ -304,6 +327,10 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Aviso: {what} en la cama de {width:.0f} × {depth:.0f} mm; ordénalas en el laminador",
               file=sys.stderr)
     print(f"Escrito: {output} (para {target}{f', {len(parts)} piezas' if args.plate else ''})")
+    used = max((max(p.color_plan.filaments()) for p in parts if p.color_plan), default=0)
+    if used > 1:
+        print(f"Aviso: el laminador tiene que tener al menos {used} filamentos, cada color en "
+              "el número que dice «Colores»", file=sys.stderr)
     if args.open:
         try:
             subprocess.Popen([find_slicer(args.open), str(output.resolve())])
