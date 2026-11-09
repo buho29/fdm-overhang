@@ -13,6 +13,13 @@ MM_PER_CM = 10.0
 DIGITS = 5   # decimales en mm: 0,01 µm, de sobra para reconocer la malla
 ROLES = (('seam', 'enforce'), ('seam', 'block'), ('support', 'enforce'), ('support', 'block'))
 OPEN_IN = ('orca', 'bambu', None)
+# Filamentos que slicer-paint sabe pintar (su MAX_FILAMENT).
+MAX_FILAMENT = 17
+# Propiedad con el color principal de un aspecto de Fusion, según su tipo: plástico y pintura, genérico, metal,
+# capas (fibra de carbono), transparente, cristal y madera. 'surface_albedo' la tienen casi todos y suele ser
+# blanca: solo cuenta si no hay otra.
+COLOR_PROPS = ('opaque_albedo', 'generic_diffuse', 'metal_f0', 'layered_diffuse', 'transparent_color',
+               'glazing_transmission_color', 'wood_early_color')
 # La instalación de desarrollo: el .venv de slicer-paint/ junto al complemento, si se ejecuta desde el repo.
 DEFAULT_EXE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'slicer-paint', '.venv',
                            'Scripts' if os.name == 'nt' else 'bin', 'slicer-paint.exe' if os.name == 'nt' else 'slicer-paint')
@@ -73,20 +80,71 @@ def selection(edges=(), faces=(), patches=()):
     return out or None
 
 
-def job(body, bed=None, **roles):
+def job(body, bed=None, color=None, **roles):
     """Archivo de pieza versión 3. roles: seam_enforce, seam_block, support_enforce, support_block, cada uno una
-    selección (selection) o None. Da ValueError si no hay ni cama ni ninguna selección, como slicer-paint."""
+    selección (selection) o None; color, la clave de colores (color_section) o None. Da ValueError si no hay ni cama
+    ni ninguna selección, como slicer-paint."""
     out = {'version': 3, 'units': 'mm', 'body': body}
     if bed is not None:
         out['bed'] = list(bed)
+    if color:
+        out['color'] = color
     for kind, role in ROLES:
         chosen = roles.pop('%s_%s' % (kind, role), None)
         if chosen:
             out.setdefault(kind, {})[role] = chosen
     if roles:
         raise TypeError('Papel desconocido: %s' % ', '.join(sorted(roles)))
-    if 'bed' not in out and 'seam' not in out and 'support' not in out:
+    if 'bed' not in out and 'seam' not in out and 'support' not in out and 'color' not in out:
         raise ValueError('Sin cama ni nada elegido')
+    return out
+
+
+def hex_rgb(rgb):
+    return '#%02X%02X%02X' % tuple(rgb)
+
+
+def appearance_rgb(props):
+    """'#RRGGBB' del color principal de un aspecto. props: [(id, (r, g, b) o None si va con textura)] de sus
+    propiedades de color. None si ninguna tiene un color fijo."""
+    values = {pid: rgb for pid, rgb in props if rgb is not None}
+    for pid in COLOR_PROPS:
+        if pid in values:
+            return hex_rgb(values[pid])
+    for pid, rgb in props:
+        if rgb is not None and pid != 'surface_albedo':
+            return hex_rgb(rgb)
+    return hex_rgb(values['surface_albedo']) if 'surface_albedo' in values else None
+
+
+def palette(pieces):
+    """{color: filamento} de los cuerpos que se envían. pieces: [(color del cuerpo, [colores de sus caras])], en el
+    orden de envío. Cada color distinto va al siguiente filamento por orden de aparición: el del primer cuerpo es el
+    1. Un color None (aspecto sin color fijo) cuenta como uno más. ValueError si pasan de MAX_FILAMENT."""
+    out = {}
+    for body_rgb, face_rgbs in pieces:
+        for rgb in [body_rgb] + list(face_rgbs):
+            if rgb not in out:
+                out[rgb] = len(out) + 1
+    if len(out) > MAX_FILAMENT:
+        raise ValueError('%d colores: slicer-paint pinta hasta %d filamentos' % (len(out), MAX_FILAMENT))
+    return out
+
+
+def _filament(rgb, pal):
+    out = {'filament': pal[rgb]}
+    if rgb is not None:
+        out['rgb'] = rgb
+    return out
+
+
+def color_section(body_rgb, zones, pal):
+    """Clave color del archivo de pieza: el filamento del cuerpo y una zona por color. zones: [(color, [caras del
+    formato])], sin las del color del cuerpo; pal, de palette."""
+    out = {'body': _filament(body_rgb, pal)}
+    paint = [dict(_filament(rgb, pal), faces=list(faces)) for rgb, faces in zones if faces]
+    if paint:
+        out['paint'] = paint
     return out
 
 

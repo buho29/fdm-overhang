@@ -208,6 +208,19 @@ EN = {
     'placa': 'plate',
     'Guardados la placa %s y sus piezas.\n\nSin slicer-paint. Para generar el 3MF, ejecútalo a mano:\n%s':
         'Saved the plate %s and its parts.\n\nNo slicer-paint. To build the 3MF, run it by hand:\n%s',
+    # ------------------------------------------------ colores
+    'Colores (AMS)': 'Colours (AMS)',
+    'Pinta cada cara con el filamento de su color, según los aspectos de Fusion. Cada color distinto va a un '
+    'filamento: el del primer cuerpo es el 1 y los demás, por orden de aparición. En el laminador, carga cada color '
+    'en su número.':
+        'Paints each face with the filament of its colour, from the Fusion appearances. Each different colour goes '
+        "to a filament: the first body's is 1 and the rest follow in order of appearance. In the slicer, load each "
+        'colour in its number.',
+    'cuerpo': 'body',
+    'filamento %d: %s': 'filament %d: %s',
+    'Colores (carga cada uno en su filamento):': 'Colours (load each one in its filament):',
+    'Demasiados colores: slicer-paint pinta hasta %d filamentos.':
+        'Too many colours: slicer-paint paints up to %d filaments.',
     # ------------------------------------------------ errores
     'Voladizos FDM: error': 'FDM overhangs: error',
     'Voladizos FDM: error al arrancar': 'FDM overhangs: error on start',

@@ -147,6 +147,38 @@ class FilesTest(unittest.TestCase):
                         'endloop\nendfacet\nendsolid a\n')
             self.assertEqual(S.stl_bounds(path), ((0.0, 0.0, 0.0), (1.0, 2.0, 0.0)))
 
+    def test_appearance_rgb_picks_the_main_colour(self):
+        # Valores leídos de la biblioteca de aspectos de Fusion.
+        steel = [('metal_f0', (160, 160, 160)), ('surface_albedo', (255, 255, 255))]
+        abs_white = [('opaque_albedo', (246, 246, 243)), ('opaque_luminance_modifier', (255, 255, 255)),
+                     ('surface_albedo', (255, 255, 255))]
+        carbon = [('layered_bottom_f0', None), ('layered_diffuse', (25, 25, 25)), ('surface_albedo', (255, 255, 255))]
+        walnut = [('surface_albedo', (255, 255, 255)), ('wood_early_color', (86, 58, 26))]
+        self.assertEqual(S.appearance_rgb(steel), '#A0A0A0')   # el mismo que pone Fusion en su 3MF
+        self.assertEqual(S.appearance_rgb(abs_white), '#F6F6F3')
+        self.assertEqual(S.appearance_rgb(carbon), '#191919')
+        self.assertEqual(S.appearance_rgb(walnut), '#563A1A')
+        self.assertEqual(S.appearance_rgb([('otra', None), ('rara', (1, 2, 3))]), '#010203')
+        self.assertEqual(S.appearance_rgb([('surface_albedo', (255, 255, 255))]), '#FFFFFF')
+        self.assertIsNone(S.appearance_rgb([('opaque_albedo', None)]))
+
+    def test_palette_numbers_colours_in_order(self):
+        pal = S.palette([('#0000FF', ['#FF0000', '#00FF00', '#FF0000']), ('#00FF00', [None])])
+        self.assertEqual(pal, {'#0000FF': 1, '#FF0000': 2, '#00FF00': 3, None: 4})
+        with self.assertRaises(ValueError):
+            S.palette([('#%06X' % i, []) for i in range(S.MAX_FILAMENT + 1)])
+
+    def test_color_section_and_job(self):
+        pal = {'#0000FF': 1, '#FF0000': 2, None: 3}
+        face = {'vertices': [[0, 0, 0], [1, 0, 0], [0, 1, 0]], 'triangles': [[0, 1, 2]], 'area': 0.5}
+        color = S.color_section('#FF0000', [('#0000FF', [face]), (None, [face]), ('#00FF00', [])], pal)
+        self.assertEqual(color, {'body': {'filament': 2, 'rgb': '#FF0000'},
+                                 'paint': [{'filament': 1, 'rgb': '#0000FF', 'faces': [face]},
+                                           {'filament': 3, 'faces': [face]}]})
+        self.assertEqual(S.color_section('#0000FF', [], pal), {'body': {'filament': 1, 'rgb': '#0000FF'}})
+        self.assertEqual(S.job('Caja', color=color)['color'], color)
+        self.assertNotIn('color', S.job('Caja', [0, 0, -1]))
+
 
 if __name__ == '__main__':
     unittest.main()

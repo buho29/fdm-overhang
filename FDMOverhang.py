@@ -91,7 +91,8 @@ def _load_settings():
          'th_bodies': 'visible', 'th_res': 'coarse', 'th_paint': 'map', 'th_limit': 0.8, 'th_lo': 0.0,
          'th_hi': 4.0, 'th_keep': False, 'th_mode': 'thickness', 'gap_limit': 0.1, 'gap_lo': 0.0, 'gap_hi': 2.0,
          'th_xray': True, 'sl_bed': _default_bed(),
-         'sl_open': 'orca', 'sl_dir': '', 'slicer_paint': '', 'sl_what': 'one', 'sl_mesh': 'high'}
+         'sl_open': 'orca', 'sl_dir': '', 'slicer_paint': '', 'sl_what': 'one', 'sl_mesh': 'high',
+         'sl_color': False}
     try:
         with open(SETTINGS, encoding='utf-8') as f:
             s.update(json.load(f))
@@ -1074,7 +1075,7 @@ def _sl_read(inputs):
     return {'sl_body': _sl_state['bodies'][i][0] if i is not None else None,
             'sl_what': _choice(inputs, 'sl_what', SL_WHAT), 'sl_bed': _choice(inputs, 'sl_bed', BEDS),
             'sl_mesh': _choice(inputs, 'sl_mesh', SL_MESH),
-            'sl_open': _choice(inputs, 'sl_open', OPEN_IN)}
+            'sl_open': _choice(inputs, 'sl_open', OPEN_IN), 'sl_color': inputs.itemById('sl_color').value}
 
 
 def _picked(inputs, key):
@@ -1308,6 +1309,50 @@ def _sl_bed(cfg, body):
     return S.bed_vector('face', n)
 
 
+def _sl_rgb(entity, cache):
+    """'#RRGGBB' del aspecto que se ve en un cuerpo o una cara (el suyo o el heredado), o None si no tiene un color
+    fijo. cache: {aspecto: color}, para no leer el mismo aspecto en cada cara. La clave lleva el nombre porque un
+    aspecto copiado de otro conserva su id; dentro del diseño, el nombre no se repite."""
+    ap = entity.appearance
+    if not ap:
+        return None
+    key = (ap.id, ap.name)
+    if key not in cache:
+        props = []
+        for p in ap.appearanceProperties:
+            if isinstance(p, adsk.core.ColorProperty):
+                v = p.value
+                props.append((p.id, (v.red, v.green, v.blue) if v else None))
+        cache[key] = S.appearance_rgb(props)
+    return cache[key]
+
+
+def _sl_colors(body, cache=None):
+    """(color del cuerpo, [(cara, color)] de las caras que tienen otro)."""
+    cache = {} if cache is None else cache
+    body_rgb = _sl_rgb(body, cache)
+    faces = []
+    for face in body.faces:
+        rgb = _sl_rgb(face, cache)
+        if rgb != body_rgb:
+            faces.append((face, rgb))
+    return body_rgb, faces
+
+
+def TOO_MANY_COLORS():
+    return tr('Demasiados colores: slicer-paint pinta hasta %d filamentos.') % S.MAX_FILAMENT
+
+
+def _sl_palette(bodies):
+    """{color: filamento} de los cuerpos que se envían, en ese orden (S.palette)."""
+    cache = {}
+    pieces = []
+    for body in bodies:
+        body_rgb, faces = _sl_colors(body, cache)
+        pieces.append((body_rgb, [rgb for _, rgb in faces]))
+    return S.palette(pieces)
+
+
 def _count(n_edges, n_faces):
     parts = []
     if n_edges:
@@ -1317,8 +1362,10 @@ def _count(n_edges, n_faces):
     return ', '.join(parts)
 
 
-def _sl_collect(body, cfg):
-    """(archivo de pieza o None, html, capas, aristas [(coords, color)]) de un cuerpo con lo elegido para él (cfg)."""
+def _sl_collect(body, cfg, pal=None, send=False):
+    """(archivo de pieza o None, html, capas, aristas [(coords, color)]) de un cuerpo con lo elegido para él (cfg).
+    pal: {color: filamento} si se envían los colores (_sl_palette). Las caras de color solo se mallan al enviar
+    (send): en la vista previa basta con contarlas."""
     bed = _sl_bed(cfg, body)
     if isinstance(bed, str):
         return None, bed, [], []
@@ -1346,9 +1393,23 @@ def _sl_collect(body, cfg):
         if edges or faces:
             rows.append(sq % (rgb + ('%s: %s' % (tr(label), _count(len(edges), len(faces))),)))
 
-    job = S.job(body.name, bed, **roles)
+    color, color_rows = None, []
+    if pal is not None:
+        body_rgb, faces = _sl_colors(body)
+        groups = {}
+        for face, rgb in faces:
+            groups.setdefault(rgb, []).append(face)
+        zones = [(rgb, [_sl_face(f, body)[0] for f in fs] if send else fs) for rgb, fs in groups.items()]
+        color = S.color_section(body_rgb, zones, pal)
+        for rgb, what in [(body_rgb, tr('cuerpo'))] + [(rgb, _count(0, len(fs))) for rgb, fs in groups.items()]:
+            dot = '<font color="%s">■</font> ' % rgb if rgb else '□ '
+            color_rows.append(dot + tr('filamento %d: %s') % (pal[rgb], what + (' %s' % rgb if rgb else '')))
+
+    job = S.job(body.name, bed, color if send else None, **roles)
     html = [tr('Cuerpo: <b>%s</b>') % body.name, tr('Cama: %s') % tr(dict(BEDS)[cfg['bed']]), '']
     html += rows or [tr('Nada elegido a mano.')]
+    if color_rows:
+        html += ['', tr('Colores (carga cada uno en su filamento):')] + color_rows
     return job, '<br>'.join(html), layers, lines
 
 
@@ -1389,7 +1450,16 @@ def _sl_draw(inputs):
                 if plate and not cfg['plate']:
                     head.append(tr('Este cuerpo no va en la placa.'))
                 head.append('')
-            _, html, layers, lines = _sl_collect(body, cfg)
+            pal = None
+            if s['sl_color']:
+                bodies = [b for _, _, b, _ in plate] if s['sl_what'] == 'plate' else []
+                if all(b.entityToken != body.entityToken for b in bodies):
+                    bodies.append(body)
+                try:
+                    pal = _sl_palette(bodies)
+                except ValueError:
+                    head += [TOO_MANY_COLORS(), '']
+            _, html, layers, lines = _sl_collect(body, cfg, pal)
             exe = S.find_exe(_load_settings()['slicer_paint'])
             tail = ['', '<font color="#888">slicer-paint: %s</font>' % exe if exe else
                     '<font color="#c80">⚠ %s</font>' % tr('No encuentro slicer-paint: al enviar te preguntaré '
@@ -1488,9 +1558,13 @@ def _sl_send(design, s, inputs):
     _sl_store(design, current_cfg)   # después de leer el diálogo, que guardar vacía campos
     if not items:
         return tr('Ningún cuerpo en la placa: marca Incluir en la placa en los que quieras enviar.')
+    try:
+        pal = _sl_palette([b for _, b, _ in items]) if s['sl_color'] else None
+    except ValueError:
+        return TOO_MANY_COLORS()
     jobs = []
     for name, body, cfg in items:
-        job, html, _, _ = _sl_collect(body, cfg)
+        job, html, _, _ = _sl_collect(body, cfg, pal, send=True)
         if job is None:
             return ('%s: %s' % (name, html) if plate else html).replace('<br>', '\n')
         jobs.append(job)
@@ -1632,6 +1706,10 @@ class _SlCreatedHandler(adsk.core.CommandCreatedEventHandler):
                     sel.addSelectionFilter('Edges')
                     sel.setSelectionLimits(0, 0)
                     sel.tooltip = tips[key]
+            col = inputs.addBoolValueInput('sl_color', tr('Colores (AMS)'), True, '', s['sl_color'])
+            col.tooltip = tr('Pinta cada cara con el filamento de su color, según los aspectos de Fusion. Cada color '
+                             'distinto va a un filamento: el del primer cuerpo es el 1 y los demás, por orden de '
+                             'aparición. En el laminador, carga cada color en su número.')
             dd = inputs.addDropDownCommandInput('sl_mesh', tr('Malla del STL'),
                                                 adsk.core.DropDownStyles.TextListDropDownStyle)
             for key, label, _, _ in SL_MESH:

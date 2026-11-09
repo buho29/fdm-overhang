@@ -13,7 +13,7 @@ No modifica el diseño: son gráficos personalizados, no entran en la línea de 
 Está en **DISEÑO > INSPECCIONAR > Voladizos FDM**. En el mismo panel hay otros dos botones:
 
 - [Espesor y espacios](#espesor-y-espacios) pinta el espesor de las paredes o el espacio entre superficies.
-- [Enviar al laminador](#enviar-al-laminador) manda uno o varios cuerpos a OrcaSlicer o Bambu Studio, con la cara que va sobre la cama y dónde forzar o prohibir la costura y los soportes.
+- [Enviar al laminador](#enviar-al-laminador) manda uno o varios cuerpos a OrcaSlicer o Bambu Studio, con la cara que va sobre la cama, dónde forzar o prohibir la costura y los soportes y, si quieres, los colores de las caras para imprimir con varios filamentos.
 
 ![Voladizos a 45°](img/ejemplo.png)
 
@@ -111,6 +111,7 @@ Tercer botón, en **DISEÑO > INSPECCIONAR > Enviar al laminador**. Lleva una pi
 | Cama | *Plano XY (Z arriba)*, *Plano XZ (Y arriba)* o *Cara plana elegida*, que se elige en *Cara sobre la cama* |
 | Costura: Forzar en / Prohibir en | Aristas o caras donde poner la costura, o donde no puede ir. Una arista solo vale para forzarla si sube respecto a las capas |
 | Soportes: Forzar en / Bloquear en | Caras donde forzar soportes, o donde no puede haberlos. Solo cuenta lo que mira hacia abajo con la pieza ya orientada |
+| Colores (AMS) | Pinta cada cara con el filamento de su color, según los aspectos de Fusion. Cada color distinto va a un filamento: el del primer cuerpo es el 1 y los demás, por orden de aparición, también entre los cuerpos de una placa. La lista de colores y filamentos sale en *Resultado*: en el laminador, carga cada color en su número |
 | Malla del STL | Separación máxima entre los triángulos y la superficie: de *Baja (0,05 mm)* a *Muy alta (0,003 mm)*. *Alta* basta para imprimir; con más, la pieza tarda más en procesarse y en abrirse |
 | Abrir en | *OrcaSlicer*, *Bambu Studio* o *No abrir*. El 3MF se prepara para el laminador elegido: cada uno necesita el suyo |
 

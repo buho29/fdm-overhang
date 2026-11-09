@@ -13,7 +13,7 @@ The design is not modified: these are custom graphics, they don't go into the ti
 It is in **DESIGN > INSPECT > FDM overhangs**. The same panel has two more buttons:
 
 - [Thickness and gaps](#thickness-and-gaps) paints the wall thickness or the gap between surfaces.
-- [Send to slicer](#send-to-slicer) sends one or several bodies to OrcaSlicer or Bambu Studio, with the face that goes on the bed and where to enforce or block the seam and supports.
+- [Send to slicer](#send-to-slicer) sends one or several bodies to OrcaSlicer or Bambu Studio, with the face that goes on the bed, where to enforce or block the seam and supports and, if you want, the colours of the faces for multi-filament printing.
 
 ![Overhangs at 45°](img/ejemplo.png)
 
@@ -111,6 +111,7 @@ Third button, in **DESIGN > INSPECT > Send to slicer**. Takes a part from Fusion
 | Bed | *XY plane (Z up)*, *XZ plane (Y up)* or *Selected planar face*, chosen in *Face on the bed* |
 | Seam: Enforce on / Block on | Edges or faces where the seam should go, or where it must not. An edge can only enforce the seam if it rises relative to the layers |
 | Supports: Enforce on / Block on | Faces where supports are enforced, or not allowed. Only what faces down once the part is oriented counts |
+| Colours (AMS) | Paints each face with the filament of its colour, from the Fusion appearances. Each different colour goes to a filament: the first body's is 1 and the rest follow in order of appearance, also across the bodies on a plate. The list of colours and filaments is shown in *Result*: in the slicer, load each colour in its number |
 | STL mesh | Maximum distance between the triangles and the surface: from *Low (0.05 mm)* to *Very high (0.003 mm)*. *High* is enough for printing; finer meshes take longer to process and to open |
 | Open in | *OrcaSlicer*, *Bambu Studio* or *Do not open*. The 3MF is prepared for the chosen slicer: each one needs its own |
 
