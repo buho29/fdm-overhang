@@ -10,7 +10,10 @@ Pinta encima del modelo lo que va a necesitar soporte, como la vista de soportes
 
 No modifica el diseño: son gráficos personalizados, no entran en la línea de tiempo y desaparecen al cerrar el diálogo.
 
-Está en **DISEÑO > INSPECCIONAR > Voladizos FDM**. En el mismo panel hay un segundo botón, [Espesor y espacios](#espesor-y-espacios), que pinta el espesor de las paredes o el espacio entre superficies.
+Está en **DISEÑO > INSPECCIONAR > Voladizos FDM**. En el mismo panel hay otros dos botones:
+
+- [Espesor y espacios](#espesor-y-espacios) pinta el espesor de las paredes o el espacio entre superficies.
+- [Enviar al laminador](#enviar-al-laminador) manda uno o varios cuerpos a OrcaSlicer o Bambu Studio, con la cara que va sobre la cama y dónde forzar o prohibir la costura y los soportes.
 
 ![Voladizos a 45°](img/ejemplo.png)
 
@@ -95,6 +98,33 @@ Un sinfín y su rueda, generados con [WormGear](https://github.com/buho29/wormge
 - Hay 0,01 mm de margen con el espacio mínimo, porque es el error de la medida entre dos curvas: una holgura justa de 0,1 no se marca.
 - Lo estrecho suele estar por dentro y no se ve desde fuera: para eso está **Ver a través**. Una sección apenas ayuda: las paredes de una rendija estrecha quedan de canto y no se ven. Ocultar un cuerpo tampoco sirve: con *Todos los visibles* deja de medirse.
 - El rayo sale perpendicular a cada cara, así que una arista que pasa cerca de otra cara sin tenerla delante puede quedar sin medir: el mínimo real puede ser algo menor.
+
+## Enviar al laminador
+
+Tercer botón, en **DISEÑO > INSPECCIONAR > Enviar al laminador**. Lleva una pieza de Fusion al laminador con lo que en el laminador se hace a mano: la cara que va sobre la cama, dónde poner o no la costura y dónde forzar o bloquear los soportes. Se elige sobre las caras y aristas del modelo, y el 3MF sale orientado y pintado para OrcaSlicer o Bambu Studio.
+
+| Campo | Qué hace |
+|---|---|
+| Enviar | *Este cuerpo*, en su propio 3MF, o *Varios en una placa*: todos los marcados con *Incluir en la placa*, en un solo 3MF |
+| Cuerpo | El cuerpo que se ve y se configura. Los que van en la placa llevan ✔ |
+| Incluir en la placa | Este cuerpo entra en la placa |
+| Cama | *Plano XY (Z arriba)*, *Plano XZ (Y arriba)* o *Cara plana elegida*, que se elige en *Cara sobre la cama* |
+| Costura: Forzar en / Prohibir en | Aristas o caras donde poner la costura, o donde no puede ir. Una arista solo vale para forzarla si sube respecto a las capas |
+| Soportes: Forzar en / Bloquear en | Caras donde forzar soportes, o donde no puede haberlos. Solo cuenta lo que mira hacia abajo con la pieza ya orientada |
+| Malla del STL | Separación máxima entre los triángulos y la superficie: de *Baja (0,05 mm)* a *Muy alta (0,003 mm)*. *Alta* basta para imprimir; con más, la pieza tarda más en procesarse y en abrirse |
+| Abrir en | *OrcaSlicer*, *Bambu Studio* o *No abrir*. El 3MF se prepara para el laminador elegido: cada uno necesita el suyo |
+
+Mientras el diálogo está abierto, lo elegido se pinta encima del modelo: costura forzada en cian, prohibida en naranja, soportes forzados en verde y bloqueados en rojo. Lo elegido para cada cuerpo se guarda en el diseño y vuelve al abrir el diálogo, también después de cerrar y abrir el archivo.
+
+Al pulsar **Enviar** se elige dónde guardar el 3MF. Al lado quedan el STL y el archivo de pieza de cada cuerpo, el log de slicer-paint y, con varios cuerpos, el archivo de placa. Mientras slicer-paint trabaja, Fusion sigue libre. Al acabar, se abre el laminador, o un aviso si algo falla.
+
+- **Necesita [slicer-paint](#slicer-paint-para-enviar-al-laminador)**, que orienta la pieza, pinta la costura y los soportes y escribe el 3MF. Sin él, solo se guardan el STL y el archivo de pieza, con la orden para generar el 3MF a mano.
+- **Varios cuerpos:** cada uno se orienta con su propia cama y lleva lo suyo. Se colocan en filas sobre la cama, y si no caben, se avisa para ordenarlos en el laminador.
+- **Si vuelves a enviar al mismo 3MF** después de guardarlo en el laminador, se conservan sus opciones de impresión: el proyecto (impresora, filamentos y proceso), los ajustes de cada pieza, como su filamento, sus paredes o el tipo de soporte, y los de la placa. La geometría, la orientación, la posición y la pintura salen de nuevo.
+- **Bambu Studio:** el 3MF lleva un proyecto completo de la P1S con 5 filamentos, porque Bambu Studio borra los ajustes de cada pieza si el proyecto no está completo. Para otra impresora, guárdalo una vez desde Bambu Studio con la tuya: los siguientes envíos la conservan.
+- Los cuerpos dentro de ocurrencias movidas o giradas se exportan en su sitio, y se comprueba que el STL coincide con el cuerpo antes de lanzar slicer-paint.
+
+Los detalles de slicer-paint, como sus opciones y el formato del archivo de pieza, están en [slicer-paint/README.md](slicer-paint/README.md).
 
 ## Instalación
 

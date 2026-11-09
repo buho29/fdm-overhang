@@ -13,7 +13,8 @@ Instalar (Windows)
 3. En Fusion 360: Utilidades > Complementos (Mayús+S) > FDMOverhang > Ejecutar,
    y marca "Al iniciar" para que arranque siempre.
 
-Los botones quedan en DISEÑO > INSPECCIONAR > Voladizos FDM y Espesor y espacios.
+Los botones quedan en DISEÑO > INSPECCIONAR > Voladizos FDM, Espesor y espacios
+y Enviar al laminador. Enviar al laminador necesita slicer-paint: ver README.md.
 
 Para actualizar a una versión nueva, ejecuta su instalar.bat: se conservan
 los últimos valores del diálogo. Si Fusion está abierto, detén el

@@ -14,7 +14,8 @@ Install (Windows)
 3. In Fusion 360: Utilities > Add-Ins (Shift+S) > FDMOverhang > Run,
    and tick "Run on Startup" so it always starts.
 
-The buttons are in DESIGN > INSPECT > FDM overhangs and Thickness and gaps.
+The buttons are in DESIGN > INSPECT > FDM overhangs, Thickness and gaps and
+Send to slicer. Send to slicer needs slicer-paint: see README.en.md.
 The add-in is in Spanish if Fusion is in Spanish, and in English otherwise.
 
 To update to a new version, run its instalar.bat: the last dialog values

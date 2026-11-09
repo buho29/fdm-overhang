@@ -10,7 +10,10 @@ Paints over the model what will need support, like a slicer's support preview:
 
 The design is not modified: these are custom graphics, they don't go into the timeline and they disappear when the dialog is closed.
 
-It is in **DESIGN > INSPECT > FDM overhangs**. The same panel has a second button, [Thickness and gaps](#thickness-and-gaps), which paints the wall thickness or the gap between surfaces.
+It is in **DESIGN > INSPECT > FDM overhangs**. The same panel has two more buttons:
+
+- [Thickness and gaps](#thickness-and-gaps) paints the wall thickness or the gap between surfaces.
+- [Send to slicer](#send-to-slicer) sends one or several bodies to OrcaSlicer or Bambu Studio, with the face that goes on the bed and where to enforce or block the seam and supports.
 
 ![Overhangs at 45°](img/ejemplo.png)
 
@@ -95,6 +98,33 @@ A worm and its wheel, generated with [WormGear](https://github.com/buho29/wormge
 - There is a 0.01 mm margin with the minimum gap, which is the measuring error between two curves: an exact 0.1 clearance is not marked.
 - Narrow gaps are usually inside and cannot be seen from outside: that is what **See through** is for. A section barely helps: the walls of a narrow slit are edge-on and cannot be seen. Hiding a body does not work either: with *All visible* it is no longer measured.
 - The ray leaves each face perpendicularly, so an edge passing close to another face without having it in front may go unmeasured: the real minimum may be somewhat smaller.
+
+## Send to slicer
+
+Third button, in **DESIGN > INSPECT > Send to slicer**. Takes a part from Fusion to the slicer with what you would otherwise do by hand in the slicer: the face that goes on the bed, where the seam may or may not go and where to enforce or block supports. You choose them on the model's faces and edges, and the 3MF comes out oriented and painted for OrcaSlicer or Bambu Studio.
+
+| Field | What it does |
+|---|---|
+| Send | *This body*, in its own 3MF, or *Several on one plate*: all those ticked with *Include on the plate*, in a single 3MF |
+| Body | The body being shown and set up. Those on the plate are marked with ✔ |
+| Include on the plate | This body goes on the plate |
+| Bed | *XY plane (Z up)*, *XZ plane (Y up)* or *Selected planar face*, chosen in *Face on the bed* |
+| Seam: Enforce on / Block on | Edges or faces where the seam should go, or where it must not. An edge can only enforce the seam if it rises relative to the layers |
+| Supports: Enforce on / Block on | Faces where supports are enforced, or not allowed. Only what faces down once the part is oriented counts |
+| STL mesh | Maximum distance between the triangles and the surface: from *Low (0.05 mm)* to *Very high (0.003 mm)*. *High* is enough for printing; finer meshes take longer to process and to open |
+| Open in | *OrcaSlicer*, *Bambu Studio* or *Do not open*. The 3MF is prepared for the chosen slicer: each one needs its own |
+
+While the dialog is open, what you choose is painted over the model: enforced seam in cyan, blocked seam in orange, enforced supports in green and blocked supports in red. The choices for each body are saved in the design and come back when the dialog is opened again, also after closing and reopening the file.
+
+**Send** asks where to save the 3MF. Next to it go each body's STL and part file, the slicer-paint log and, with several bodies, the plate file. Fusion stays free while slicer-paint works. When it finishes, the slicer opens, or a message appears if something fails.
+
+- **It needs [slicer-paint](#slicer-paint-for-send-to-slicer)**, which orients the part, paints the seam and supports and writes the 3MF. Without it, only the STL and the part file are saved, with the command to build the 3MF by hand.
+- **Several bodies:** each one is oriented with its own bed and carries its own choices. They are laid out in rows on the bed; if they don't fit, a warning says to arrange them in the slicer.
+- **If you send again to the same 3MF** after saving it in the slicer, its print options are kept: the project (printer, filaments and process), each part's settings, such as its filament, walls or support type, and the plate's. Geometry, orientation, position and painting are generated again.
+- **Bambu Studio:** the 3MF carries a complete P1S project with 5 filaments, because Bambu Studio drops each part's settings if the project is not complete. For another printer, save it once from Bambu Studio with yours: later sends keep it.
+- Bodies inside moved or rotated occurrences are exported in place, and the STL is checked against the body before slicer-paint runs.
+
+The slicer-paint details, such as its options and the part file format, are in [slicer-paint/README.md](slicer-paint/README.md) (in Spanish).
 
 ## Installation
 
