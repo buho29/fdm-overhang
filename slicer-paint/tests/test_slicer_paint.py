@@ -16,7 +16,7 @@ from slicer_paint import cli, mesh_io, orient, paint, plate, project, selection
 from slicer_paint.gcode import analyze, seam_angles
 from slicer_paint.reader import read_painted
 from slicer_paint.selector import (MAX_DEPTH, MIXED, Capsule, Node, decode, encode, leaves,
-                                   overlaps_box, paint_box, PaintLayer, triangle_area)
+                                   overlaps_box, paint_box, paint_region, PaintLayer, triangle_area)
 from slicer_paint.writer import BLOCK, ENFORCE, NONE, PlateObject, write_3mf, write_plate
 
 
@@ -441,6 +441,25 @@ def test_capsule_distance_to_polyline():
     capsule = Capsule(np.array([[0.0, 0, 0], [10, 0, 0], [10, 10, 0]]), 1.0)
     points = np.array([[5.0, 2, 0], [12, 5, 0], [-3, 0, 4], [10, 0, 0]])
     assert capsule.distance(points) == pytest.approx([2, 2, 5, 0])
+
+
+def test_batch_painting_matches_painting_one_by_one():
+    # apply_region pinta todo a la vez (paint_leaves) y mide la hélice solo en los tramos
+    # cercanos; tiene que dar los mismos árboles que paint_region triángulo a triángulo.
+    mesh = trimesh.creation.cylinder(radius=8, height=30, sections=24)
+    angle = np.linspace(0, 4 * np.pi, 120)   # más tramos que _FEW_SEGMENTS: usa el árbol
+    helix = np.column_stack([8 * np.cos(angle), 8 * np.sin(angle), np.linspace(-14, 14, 120)])
+    capsule = Capsule(helix, 0.5)
+    mask = np.ones(len(mesh.faces), dtype=bool)
+    layer = PaintLayer(len(mesh.faces))
+    layer.apply_region(mesh.triangles, mask, capsule, ENFORCE, 2.0)
+    expected = {}
+    for i, tri in enumerate(mesh.triangles):
+        node = paint_region(Node(), tri, Capsule(helix, 0.5), ENFORCE, 2.0)
+        if node.is_split or node.state != NONE:
+            expected[i] = encode(node)
+    assert expected and {i: encode(n) for i, n in layer.nodes.items()} == expected
+    assert any(n.is_split for n in layer.nodes.values())
 
 
 def _paint(mesh, chosen, state=ENFORCE, radius=1.0):

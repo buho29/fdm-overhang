@@ -50,6 +50,8 @@ ROOT_RELS = f"""{XML_HEAD}<Relationships xmlns="{RELS_NS}">
 _MODEL_ATTRS = (f'unit="millimeter" xml:lang="en-US" xmlns="{CORE_NS}" '
                 f'xmlns:BambuStudio="{BAMBU_NS}" xmlns:p="{PROD_NS}" requiredextensions="p"')
 _VERSION_META = ' <metadata name="BambuStudio:3mfVersion">1</metadata>\n'
+# Líneas de la malla que se juntan antes de escribirlas.
+_LINES_PER_WRITE = 100_000
 
 
 @dataclass
@@ -86,18 +88,26 @@ def _write_mesh(out: io.TextIOBase, vertices: np.ndarray, faces: np.ndarray,
                 support: PaintLayer | None, seam: PaintLayer | None) -> None:
     """Escribe <mesh> en streaming; las mallas pueden tener millones de triángulos."""
     out.write("<mesh>\n<vertices>\n")
-    for x, y, z in vertices:
-        out.write(f'<vertex x="{x:.8g}" y="{y:.8g}" z="{z:.8g}"/>\n')
+    vertex_list = vertices.tolist()   # floats de Python: se formatean igual y mucho más deprisa
+    for first in range(0, len(vertex_list), _LINES_PER_WRITE):
+        out.write("".join([f'<vertex x="{x:.8g}" y="{y:.8g}" z="{z:.8g}"/>\n'
+                           for x, y, z in vertex_list[first:first + _LINES_PER_WRITE]]))
     out.write("</vertices>\n<triangles>\n")
-    for i, (a, b, c) in enumerate(faces):
-        attrs = ""
-        support_text = support.string(i) if support else None
-        seam_text = seam.string(i) if seam else None
-        if support_text:
-            attrs += f' paint_supports="{support_text}"'
-        if seam_text:
-            attrs += f' paint_seam="{seam_text}"'
-        out.write(f'<triangle v1="{a}" v2="{b}" v3="{c}"{attrs}/>\n')
+    painted = set(support.nodes if support else ()) | set(seam.nodes if seam else ())
+    face_list = faces.tolist()
+    for first in range(0, len(face_list), _LINES_PER_WRITE):
+        lines = []
+        for i, (a, b, c) in enumerate(face_list[first:first + _LINES_PER_WRITE], first):
+            attrs = ""
+            if i in painted:
+                support_text = support.string(i) if support else None
+                seam_text = seam.string(i) if seam else None
+                if support_text:
+                    attrs += f' paint_supports="{support_text}"'
+                if seam_text:
+                    attrs += f' paint_seam="{seam_text}"'
+            lines.append(f'<triangle v1="{a}" v2="{b}" v3="{c}"{attrs}/>\n')
+        out.write("".join(lines))
     out.write("</triangles>\n</mesh>\n")
 
 

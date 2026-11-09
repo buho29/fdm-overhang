@@ -102,9 +102,15 @@ def paint_seam(mesh: trimesh.Trimesh, rule: str | None,
 def _distance_to_mesh(mesh: trimesh.Trimesh, points: np.ndarray) -> float:
     """Mayor distancia de unos puntos a la malla."""
     triangles = mesh.triangles
+    low, high = triangles.min(axis=1), triangles.max(axis=1)
+    # El vértice más cercano acota la distancia: solo pueden estar más cerca los triángulos cuya
+    # caja queda a menos de eso, y con una malla fina son muy pocos.
+    bound = cKDTree(mesh.vertices).query(points)[0]
     worst = 0.0
-    for point in points:
-        closest = trimesh.triangles.closest_point(triangles, np.tile(point, (len(triangles), 1)))
+    for point, limit in zip(points, bound):
+        gap = np.linalg.norm(np.maximum(np.maximum(low - point, point - high), 0), axis=1)
+        near = triangles[gap <= limit + 1e-9]
+        closest = trimesh.triangles.closest_point(near, np.tile(point, (len(near), 1)))
         worst = max(worst, float(np.linalg.norm(closest - point, axis=1).min()))
     return worst
 

@@ -1,9 +1,11 @@
 # Lo que se manda a slicer-paint (en la carpeta slicer-paint/ de este repo): el archivo de pieza, versión 3, y la
 # línea de comandos. Sin Fusion, para poder probarlo: las coordenadas llegan en cm (las de Fusion) y salen en mm.
+import array
 import math
 import os
 import shutil
 import struct
+import sys
 
 from . import thickness as T
 
@@ -177,9 +179,14 @@ def stl_bounds(path):
     pts = []
     n = struct.unpack_from('<I', data, 80)[0] if len(data) >= 84 else -1
     if len(data) == 84 + 50 * n:
-        for t in range(n):
-            v = struct.unpack_from('<12f', data, 84 + 50 * t)
-            pts += [v[3:6], v[6:9], v[9:12]]
+        if not n:
+            raise ValueError('STL vacío: %s' % path)
+        # solo los vértices, seguidos, en un array: min y max van en C, y una malla fina tiene cientos de miles de
+        # triángulos
+        v = array.array('f', b''.join(data[96 + 50 * t:132 + 50 * t] for t in range(n)))
+        if sys.byteorder != 'little':
+            v.byteswap()
+        return tuple(min(v[i::3]) for i in range(3)), tuple(max(v[i::3]) for i in range(3))
     else:
         for line in data.decode('ascii', 'replace').splitlines():
             parts = line.split()
