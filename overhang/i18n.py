@@ -159,6 +159,16 @@ EN = {
         'Measures now to show in yellow where the seam will be blocked. Otherwise it is measured when sending.',
     'Abrir en': 'Open in',
     'No abrir': 'Do not open',
+    'Malla del STL': 'STL mesh',
+    'Baja (0,05 mm)': 'Low (0.05 mm)',
+    'Media (0,025 mm)': 'Medium (0.025 mm)',
+    'Alta (0,01 mm)': 'High (0.01 mm)',
+    'Muy alta (0,003 mm)': 'Very high (0.003 mm)',
+    'Separación máxima entre los triángulos y la superficie real. Alta basta para imprimir; Muy alta es la de Orca '
+    'y Bambu Studio al importar un STEP, pero da muchos más triángulos y slicer-paint tarda más.':
+        'Maximum distance between the triangles and the real surface. High is enough for printing; Very high is what '
+        'Orca and Bambu Studio use when importing a STEP, but it gives many more triangles and slicer-paint takes '
+        'longer.',
     'costura forzada': 'seam enforced',
     'costura prohibida': 'seam blocked',
     'soportes forzados': 'supports enforced',
@@ -193,6 +203,25 @@ EN = {
     'slicer-paint ha fallado (código %d):': 'slicer-paint failed (code %d):',
     'Guardado: %s': 'Saved: %s',
     'Enviar al laminador: error': 'Send to slicer: error',
+    # ------------------------------------------------ varias piezas en una placa
+    'Este cuerpo': 'This body',
+    'Varios en una placa': 'Several on one plate',
+    'Un cuerpo en su 3MF, o varios en una sola placa: los marcados con Incluir en la placa, cada uno con lo que '
+    'tenga elegido.':
+        'One body in its own 3MF, or several on a single plate: those marked with Include on the plate, each with '
+        'what was chosen for it.',
+    'Incluir en la placa': 'Include on the plate',
+    'Este cuerpo va en la placa. Lo elegido para cada cuerpo se guarda en el diseño.':
+        'This body goes on the plate. What you choose for each body is saved in the design.',
+    'Placa: <b>%s</b>': 'Plate: <b>%s</b>',
+    'Ningún cuerpo en la placa: marca <b>Incluir en la placa</b>.':
+        'No body on the plate: tick <b>Include on the plate</b>.',
+    'Este cuerpo no va en la placa.': 'This body is not on the plate.',
+    'Ningún cuerpo en la placa: marca Incluir en la placa en los que quieras enviar.':
+        'No body on the plate: tick Include on the plate on those you want to send.',
+    'placa': 'plate',
+    'Guardados la placa %s y sus piezas.\n\nSin slicer-paint. Para generar el 3MF, ejecútalo a mano:\n%s':
+        'Saved the plate %s and its parts.\n\nNo slicer-paint. To build the 3MF, run it by hand:\n%s',
     # ------------------------------------------------ errores
     'Voladizos FDM: error': 'FDM overhangs: error',
     'Voladizos FDM: error al arrancar': 'FDM overhangs: error on start',

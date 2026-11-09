@@ -85,6 +85,26 @@ class FilesTest(unittest.TestCase):
                          ['sp', 'a.stl', '-o', 'a.3mf', '--fusion', 'a.json', '--open', 'orca'])
         self.assertNotIn('--open', S.command('sp', 'a.stl', 'a.json', 'a.3mf'))
 
+    def test_plate_paths_do_not_collide(self):
+        plate_path, out, parts = S.plate_paths(os.path.join('d', 'placa.3mf'), ['Caja', 'caja', 'Tapa: 2', 'Caja'])
+        self.assertEqual((os.path.basename(plate_path), os.path.basename(out)), ('placa.json', 'placa.3mf'))
+        self.assertEqual([os.path.basename(stl) for stl, _ in parts],
+                         ['placa - Caja.stl', 'placa - caja (2).stl', 'placa - Tapa 2.stl', 'placa - Caja (3).stl'])
+        self.assertEqual(os.path.basename(parts[0][1]), 'placa - Caja.json')
+
+    def test_plate_file_and_command(self):
+        _, _, parts = S.plate_paths(os.path.join('d', 'placa.3mf'), ['Caja'])
+        self.assertEqual(S.plate(['Caja'], parts),
+                         {'version': 1, 'units': 'mm',
+                          'parts': [{'stl': 'placa - Caja.stl', 'fusion': 'placa - Caja.json', 'name': 'Caja'}]})
+        self.assertEqual(S.plate_command('sp', 'p.json', 'p.3mf', 'bambu'),
+                         ['sp', '--plate', 'p.json', '-o', 'p.3mf', '--open', 'bambu'])
+
+    def test_roles_attribute(self):
+        self.assertEqual(S.role_value(['sl_sup_off', 'sl_seam_off', 'sl_sup_off']), 'sl_seam_off,sl_sup_off')
+        self.assertEqual(S.role_keys('sl_seam_off,sl_sup_off'), ['sl_seam_off', 'sl_sup_off'])
+        self.assertEqual(S.role_keys(''), [])
+
     def test_looks_like_exe(self):
         with tempfile.TemporaryDirectory() as d:
             good, other = os.path.join(d, 'Slicer-Paint.exe'), os.path.join(d, 'python.exe')
@@ -107,18 +127,17 @@ class FilesTest(unittest.TestCase):
         self.assertTrue(S.bounds_match(box, ((0.1, 0.2, 0.3), (1.1, 2.2, 3.3))))
         self.assertFalse(S.bounds_match(box, ((1.0, 2.0, 3.0), (11.0, 22.0, 33.0))))   # en cm por error
 
-    def test_move_stl(self):
-        # giro de 90° alrededor de Z y traslación de (3, 2, 0) cm
-        m = [0, -1, 0, 3, 1, 0, 0, 2, 0, 0, 1, 0, 0, 0, 0, 1]
+    def test_write_stl(self):
+        c, idx = square()
         with tempfile.TemporaryDirectory() as d:
             path = os.path.join(d, 'a.stl')
-            with open(path, 'wb') as f:
-                f.write(b'\0' * 80 + struct.pack('<I', 1))
-                f.write(struct.pack('<12fH', 0, 0, 1, 0, 0, 0, 40, 0, 0, 0, 30, 20, 0))
-            S.move_stl(path, m)
+            S.write_stl(path, c, idx)
             with open(path, 'rb') as f:
-                v = struct.unpack_from('<12f', f.read(), 84)
-        self.assertEqual([round(x, 4) for x in v], [0, 0, 1, 30, 20, 0, 30, 60, 0, 0, 20, 20])
+                data = f.read()
+            self.assertEqual(len(data), 84 + 50 * 2)
+            self.assertEqual(struct.unpack_from('<I', data, 80)[0], 2)
+            self.assertEqual(struct.unpack_from('<12f', data, 84), (0, 0, 1, 0, 0, 0, 10, 0, 0, 10, 10, 0))
+            self.assertEqual(S.stl_bounds(path), ((0.0, 0.0, 0.0), (10.0, 10.0, 0.0)))
 
     def test_stl_bounds_text(self):
         with tempfile.TemporaryDirectory() as d:

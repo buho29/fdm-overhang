@@ -101,6 +101,33 @@ def paths(target_3mf):
     return base + '.stl', base + '.json', base + '.3mf'
 
 
+def safe_name(name, default='pieza'):
+    """Nombre sin los caracteres que Windows no admite en un archivo."""
+    return ''.join(ch for ch in name if ch not in '\\/:*?"<>|').strip() or default
+
+
+def plate_paths(target_3mf, names):
+    """(archivo de placa, 3mf, [(stl, json) de cada pieza]) junto al 3MF elegido: 'placa.json' y 'placa - Caja.stl'.
+    Dos piezas con el mismo nombre, también si solo cambian las mayúsculas, no pisan sus archivos."""
+    base = os.path.splitext(target_3mf)[0]
+    used, parts = set(), []
+    for name in names:
+        stem, n = '%s - %s' % (base, safe_name(name)), 1
+        while (stem if n == 1 else '%s (%d)' % (stem, n)).lower() in used:
+            n += 1
+        stem = stem if n == 1 else '%s (%d)' % (stem, n)
+        used.add(stem.lower())
+        parts.append((stem + '.stl', stem + '.json'))
+    return base + '.json', base + '.3mf', parts
+
+
+def plate(names, parts):
+    """Archivo de placa versión 1. Los archivos de cada pieza van en su misma carpeta: rutas relativas."""
+    return {'version': 1, 'units': 'mm',
+            'parts': [{'stl': os.path.basename(stl), 'fusion': os.path.basename(js), 'name': name}
+                      for name, (stl, js) in zip(names, parts)]}
+
+
 def find_exe(configured=''):
     """Ruta de slicer-paint: la de settings.json, la del PATH o la de la instalación de desarrollo. None si no está."""
     for cand in (configured, shutil.which('slicer-paint') or '', DEFAULT_EXE):
@@ -124,6 +151,23 @@ def command(exe, stl, job_path, out_3mf, open_in=None):
     return argv
 
 
+def plate_command(exe, plate_path, out_3mf, open_in=None):
+    """Línea de comandos de slicer-paint para una placa."""
+    argv = [exe, '--plate', plate_path, '-o', out_3mf]
+    if open_in:
+        argv += ['--open', open_in]
+    return argv
+
+
+def role_value(keys):
+    """Valor del atributo que marca una cara o arista con sus papeles, sin repetir y en orden."""
+    return ','.join(sorted(set(keys)))
+
+
+def role_keys(value):
+    return [k for k in value.split(',') if k]
+
+
 def stl_bounds(path):
     """(mínimo, máximo) de los vértices de un STL binario o de texto, en sus unidades."""
     with open(path, 'rb') as f:
@@ -144,29 +188,21 @@ def stl_bounds(path):
     return tuple(min(p[i] for p in pts) for i in range(3)), tuple(max(p[i] for p in pts) for i in range(3))
 
 
-def move_stl(path, m):
-    """Lleva un STL binario en mm al raíz con la matriz m de la ocurrencia (16 valores por filas, como
-    Matrix3D.asArray, con la traslación en cm). Fusion exporta el cuerpo de una ocurrencia en las coordenadas de su
-    componente, y lo demás se manda en las del raíz."""
-    with open(path, 'rb') as f:
-        data = bytearray(f.read())
-    n = struct.unpack_from('<I', data, 80)[0]
-    if len(data) != 84 + 50 * n:
-        raise ValueError('No es un STL binario: %s' % path)
-    r = [m[0], m[1], m[2], m[4], m[5], m[6], m[8], m[9], m[10]]
-    t = [m[3] * MM_PER_CM, m[7] * MM_PER_CM, m[11] * MM_PER_CM]
-
-    def rot(x, y, z):
-        return r[0] * x + r[1] * y + r[2] * z, r[3] * x + r[4] * y + r[5] * z, r[6] * x + r[7] * y + r[8] * z
-
-    for k in range(n):
-        at = 84 + 50 * k
-        v = struct.unpack_from('<12f', data, at)
-        out = list(rot(*v[0:3]))
-        for p in range(3, 12, 3):
-            x, y, z = rot(*v[p:p + 3])
-            out += [x + t[0], y + t[1], z + t[2]]
-        struct.pack_into('<12f', data, at, *out)
+def write_stl(path, coords_cm, indices):
+    """Escribe una malla en STL binario y en mm: nodos en cm (planos, x y z seguidos) e índices de tres en tres, con
+    los triángulos hacia fuera. La normal de cada triángulo sale de sus vértices."""
+    n = len(indices) // 3
+    data = bytearray(84 + 50 * n)
+    struct.pack_into('<I', data, 80, n)
+    c = [v * MM_PER_CM for v in coords_cm]
+    for t in range(n):
+        i, j, k = (3 * v for v in indices[3 * t:3 * t + 3])
+        p, q, r = c[i:i + 3], c[j:j + 3], c[k:k + 3]
+        u = [q[0] - p[0], q[1] - p[1], q[2] - p[2]]
+        w = [r[0] - p[0], r[1] - p[1], r[2] - p[2]]
+        nx, ny, nz = u[1] * w[2] - u[2] * w[1], u[2] * w[0] - u[0] * w[2], u[0] * w[1] - u[1] * w[0]
+        size = math.sqrt(nx * nx + ny * ny + nz * nz) or 1.0
+        struct.pack_into('<12f', data, 84 + 50 * t, nx / size, ny / size, nz / size, *(p + q + r))
     with open(path, 'wb') as f:
         f.write(data)
 
