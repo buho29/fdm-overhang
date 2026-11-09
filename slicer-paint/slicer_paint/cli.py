@@ -60,9 +60,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--support-block", action="append", default=[],
                         metavar="x0,y0,z0,x1,y1,z1 o fusion:ARCHIVO.json",
                         help="bloquea soportes en esta caja o en lo elegido en Fusion")
-    parser.add_argument("--support-mode", choices=["manual", "auto"], default="manual",
-                        help="manual: solo donde se pinta; auto: el slicer añade los que calcule")
-    parser.add_argument("--support-style", choices=["normal", "tree"], default="normal")
+    parser.add_argument("--support-mode", choices=["manual", "auto"],
+                        help="manual (por defecto): solo donde se pinta; auto: el slicer añade los que "
+                             "calcule. Sin esta opción ni --support-style, se conserva el tipo guardado")
+    parser.add_argument("--support-style", choices=["normal", "tree"], help="normal (por defecto) o tree")
     parser.add_argument("--seam", help="fuerza la costura: back, box:x0,y0,z0,x1,y1,z1 o "
                                        "fusion:ARCHIVO.json (aristas y caras elegidas en Fusion)")
     parser.add_argument("--seam-block", action="append", default=[],
@@ -229,11 +230,18 @@ def kept_settings(args: argparse.Namespace, output: Path, target: str) -> projec
     return previous
 
 
-def part_settings(args: argparse.Namespace, part: PreparedPart) -> dict[str, str]:
-    """Ajustes del objeto: soportes activados solo si la pieza tiene pintura de soportes."""
+def part_settings(args: argparse.Namespace, part: PreparedPart,
+                  kept: dict[str, str] | None = None) -> dict[str, str]:
+    """Ajustes del objeto: los conservados (kept) y, si la pieza tiene pintura de soportes, los
+    soportes activados. Su tipo (normal o árbol, manual o automático) es el conservado, salvo que
+    se pida otro con --support-style o --support-mode."""
+    settings = dict(kept or {})
     if not part.support.is_painted():
-        return {}
-    return {"enable_support": "1", "support_type": f"{args.support_style}({args.support_mode})"}
+        return settings
+    settings["enable_support"] = "1"
+    if args.support_style or args.support_mode or "support_type" not in settings:
+        settings["support_type"] = f"{args.support_style or 'normal'}({args.support_mode or 'manual'})"
+    return settings
 
 
 def print_summary(args: argparse.Namespace, part: PreparedPart) -> None:
@@ -280,7 +288,7 @@ def main(argv: list[str] | None = None) -> int:
     output.parent.mkdir(parents=True, exist_ok=True)
     kept_objects = previous.objects if previous else {}
     write_plate(output, [PlateObject(p.oriented.vertices, p.oriented.faces, p.support, p.seam,
-                                     p.name, {**kept_objects.get(p.name, {}), **part_settings(args, p)},
+                                     p.name, part_settings(args, p, kept_objects.get(p.name)),
                                      center)
                          for p, center in zip(parts, centers)], project_settings,
                 metadata=previous.metadata if previous and not args.project_settings else None,

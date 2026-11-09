@@ -31,7 +31,7 @@ slicer-paint pieza.stl -o pieza.3mf --support-overhang 45 --seam back --open orc
 | `--overhang-limit` | Voladizo admitido al puntuar orientaciones; 45° por defecto |
 | `--support-overhang N` | Fuerza soportes en las caras que vuelan más de N° (0° es una pared y 90° un techo) |
 | `--support-enforce`, `--support-block` | Fuerza o bloquea soportes en una caja `x0,y0,z0,x1,y1,z1` o en `fusion:archivo.json`, las caras y aristas elegidas en Fusion; solo en caras que miran hacia abajo, se puede repetir y bloquear gana a forzar |
-| `--support-mode` | `manual` (solo donde se pinta, por defecto) o `auto` (el slicer añade los que calcule) |
+| `--support-mode` | `manual` (solo donde se pinta, por defecto) o `auto` (el slicer añade los que calcule). Sin esta opción ni `--support-style`, al volver a generar el 3MF se conserva el tipo guardado |
 | `--support-style` | `normal` (por defecto) o `tree` |
 | `--seam` | Fuerza la costura: `back` (paredes hacia +Y), `box:x0,y0,z0,x1,y1,z1`, solo en paredes, o `fusion:archivo.json`, las aristas y caras elegidas en Fusion |
 | `--seam-block` | Prohíbe la costura en `box:x0,y0,z0,x1,y1,z1`, solo en paredes, o en `fusion:archivo.json`; se puede repetir y prohibir gana a forzar |
@@ -48,7 +48,7 @@ slicer-paint pieza.stl -o pieza.3mf --support-overhang 45 --seam back --open orc
 Si el 3MF de salida ya existe y lo guardaste desde el laminador, se conservan sus opciones de impresión al reescribirlo:
 
 - **El proyecto:** impresora, filamentos y proceso, con cualquier cambio que hicieras.
-- **Cada objeto, por su nombre:** el filamento que le asignaste y sus ajustes propios, como las paredes o el relleno. `enable_support` y `support_type` los decide la pintura de soportes.
+- **Cada objeto, por su nombre:** el filamento que le asignaste y sus ajustes propios, como las paredes o el relleno. Si la pieza tiene pintura de soportes, `enable_support` siempre queda activado. El tipo de soporte (normal o árbol, manual o automático) es el que guardaste, salvo que pidas otro con `--support-style` o `--support-mode`.
 - **La placa:** su nombre y los ajustes que cambiaste solo para ella.
 
 La geometría, la orientación, la colocación en la cama y la pintura salen de nuevo. Los modificadores, las piezas añadidas en el laminador y las placas que no sean la primera se pierden.

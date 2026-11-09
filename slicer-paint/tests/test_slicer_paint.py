@@ -366,6 +366,7 @@ def _save_in_slicer(path, slicer):
         entries["Metadata/model_settings.config"].decode()
         .replace('<metadata key="extruder" value="1"/>',
                  '<metadata key="extruder" value="2"/>\n    <metadata key="wall_loops" value="4"/>', 1)
+        .replace('value="normal(manual)"', 'value="tree(manual)"', 1)
         .replace('<metadata key="plater_name" value=""/>',
                  '<metadata key="plater_name" value="mi placa"/>\n'
                  '    <metadata key="thumbnail_file" value="Metadata/plate_1.png"/>', 1).encode())
@@ -393,9 +394,13 @@ def test_rewriting_keeps_the_print_options_the_slicer_saved(tmp_path, slicer):
     obj = {m.get("key"): m.get("value") for m in root.find("object").findall("metadata")}
     assert obj["extruder"] == "2" and obj["wall_loops"] == "4"
     assert obj["enable_support"] == "1"            # la pintura de soportes sigue mandando
+    assert obj["support_type"] == "tree(manual)"   # el tipo elegido en el laminador se queda
     plate_meta = {m.get("key"): m.get("value") for m in root.find("plate").findall("metadata")}
     assert plate_meta["plater_name"] == "mi placa" and plate_meta["plater_id"] == "1"
     assert "thumbnail_file" not in plate_meta      # las miniaturas no se copian
+    # Pedir un tipo de soportes gana al guardado.
+    assert cli.main(args + ["--support-mode", "auto"]) == 0
+    assert 'key="support_type" value="normal(auto)"' in _read_entry(out, "Metadata/model_settings.config")
 
 
 def test_fresh_or_another_slicer_discards_the_saved_print_options(tmp_path, capsys):
