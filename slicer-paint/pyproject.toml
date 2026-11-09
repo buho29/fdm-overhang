@@ -1,0 +1,26 @@
+[project]
+name = "slicer-paint"
+version = "0.1.0"
+description = "Genera archivos 3MF orientados, con costuras y soportes pintados, para OrcaSlicer y Bambu Studio"
+requires-python = ">=3.10"
+dependencies = ["numpy", "scipy", "trimesh", "networkx"]
+
+[project.optional-dependencies]
+dev = ["pytest", "shapely", "mapbox_earcut", "rtree"]
+
+[project.scripts]
+slicer-paint = "slicer_paint.cli:main"
+
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["slicer_paint"]
+
+[tool.setuptools.package-data]
+slicer_paint = ["templates/*.config"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = [".", "spikes"]

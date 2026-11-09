@@ -1,4 +1,4 @@
-# Lo que se manda a slicer-paint (https://github.com/buho29/slicer-paint): el archivo de pieza, versión 3, y la
+# Lo que se manda a slicer-paint (en la carpeta slicer-paint/ de este repo): el archivo de pieza, versión 3, y la
 # línea de comandos. Sin Fusion, para poder probarlo: las coordenadas llegan en cm (las de Fusion) y salen en mm.
 import math
 import os
@@ -11,7 +11,9 @@ MM_PER_CM = 10.0
 DIGITS = 5   # decimales en mm: 0,01 µm, de sobra para reconocer la malla
 ROLES = (('seam', 'enforce'), ('seam', 'block'), ('support', 'enforce'), ('support', 'block'))
 OPEN_IN = ('orca', 'bambu', None)
-DEFAULT_EXE = r'C:\slicer-paint\.venv\Scripts\slicer-paint.exe'
+# La instalación de desarrollo: el .venv de slicer-paint/ junto al complemento, si se ejecuta desde el repo.
+DEFAULT_EXE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'slicer-paint', '.venv',
+                           'Scripts' if os.name == 'nt' else 'bin', 'slicer-paint.exe' if os.name == 'nt' else 'slicer-paint')
 
 
 def mm_point(p):

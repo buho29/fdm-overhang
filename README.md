@@ -115,7 +115,7 @@ Copia la carpeta `FDMOverhang` del zip a `~/Library/Application Support/Autodesk
 Opcional: sin él, *Enviar al laminador* solo guarda el STL y el archivo de pieza. Necesita Python 3.10 o posterior y [pipx](https://pipx.pypa.io):
 
 ```powershell
-pipx install git+https://github.com/buho29/slicer-paint
+pipx install "git+https://github.com/buho29/fdm-overhang#subdirectory=slicer-paint"
 ```
 
 El complemento lo busca en el PATH. Si no lo encuentra, la primera vez que envíes una pieza te pregunta dónde está `slicer-paint.exe` y lo recuerda. Con pipx en Windows suele estar en `%USERPROFILE%\.local\bin`.
@@ -129,6 +129,14 @@ powershell -ExecutionPolicy Bypass -File install.ps1
 ```
 
 Registra la carpeta del repo en la lista de complementos de Fusion con *Ejecutar al inicio*. También se puede añadir a mano: **Utilidades > Complementos** (Mayús+S) > **+** > esta carpeta.
+
+slicer-paint está en [slicer-paint/](slicer-paint/). Si lo instalas ahí, en su propio `.venv`, el complemento lo encuentra sin preguntar:
+
+```powershell
+cd slicer-paint
+python -m venv .venv
+.venv\Scripts\python.exe -m pip install -e .[dev]
+```
 
 ## Cómo funciona
 

@@ -115,7 +115,7 @@ Copy the `FDMOverhang` folder from the zip to `~/Library/Application Support/Aut
 Optional: without it, *Send to slicer* only saves the STL and the part file. It needs Python 3.10 or later and [pipx](https://pipx.pypa.io):
 
 ```powershell
-pipx install git+https://github.com/buho29/slicer-paint
+pipx install "git+https://github.com/buho29/fdm-overhang#subdirectory=slicer-paint"
 ```
 
 The add-in looks for it on the PATH. If it is not there, the first time you send a part it asks where `slicer-paint.exe` is and remembers it. With pipx on Windows it is usually in `%USERPROFILE%\.local\bin`.
@@ -129,6 +129,14 @@ powershell -ExecutionPolicy Bypass -File install.ps1
 ```
 
 It registers the repo folder in Fusion's add-in list with *Run on startup*. It can also be added by hand: **Utilities > Add-ins** (Shift+S) > **+** > this folder.
+
+slicer-paint lives in [slicer-paint/](slicer-paint/). If you install it there, in its own `.venv`, the add-in finds it without asking:
+
+```powershell
+cd slicer-paint
+python -m venv .venv
+.venv\Scripts\python.exe -m pip install -e .[dev]
+```
 
 ## How it works
 
