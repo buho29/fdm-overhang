@@ -9,6 +9,8 @@ respetando los ajustes por objeto (comprobado en spikes/ con ambos slicers):
   con ella, Orca rechaza el archivo y Bambu falla por línea de comandos.
 - Con ajustes de proyecto (destino Bambu, ver project.py) se añaden los ajustes y "Application".
   Orca no abre esa variante.
+- Si se conservan las opciones de un 3MF que Orca guardó, van sus ajustes con su Application y
+  su metadata OrcaSlicer: así Orca lo reconoce como suyo.
 """
 from __future__ import annotations
 
@@ -17,7 +19,7 @@ import uuid
 import zipfile
 from dataclasses import dataclass, field
 from pathlib import Path
-from xml.sax.saxutils import quoteattr
+from xml.sax.saxutils import escape, quoteattr
 
 import numpy as np
 
@@ -101,15 +103,17 @@ def _write_mesh(out: io.TextIOBase, vertices: np.ndarray, faces: np.ndarray,
 
 
 
+def _keyed(values: dict[str, str], indent: str) -> str:
+    return "".join(f"{indent}<metadata key={quoteattr(k)} value={quoteattr(v)}/>\n"
+                   for k, v in values.items())
+
+
 def _object_settings(number: int, obj: PlateObject) -> str:
     part_id, wrapper_id = _ids(number)
     face_count = len(obj.faces)
-    settings = "".join(
-        f"    <metadata key={quoteattr(k)} value={quoteattr(v)}/>\n"
-        for k, v in obj.settings.items())
+    settings = _keyed({"extruder": "1", **obj.settings}, "    ")
     return f"""  <object id="{wrapper_id}">
     <metadata key="name" value={quoteattr(obj.name)}/>
-    <metadata key="extruder" value="1"/>
 {settings}    <metadata face_count="{face_count}"/>
     <part id="{part_id}" subtype="normal_part" uuid="{uuid.uuid4()}">
       <metadata key="name" value={quoteattr(obj.name)}/>
@@ -129,15 +133,15 @@ def _model_instance(number: int) -> str:
 """
 
 
-def _model_settings(objects: list[PlateObject]) -> str:
+def _model_settings(objects: list[PlateObject], plate_settings: dict[str, str]) -> str:
     """Ajustes de cada objeto y una sola placa con todos ellos."""
     numbers = range(1, len(objects) + 1)
+    plate = {"plater_name": "", "locked": "false", **plate_settings}
     return (f"{XML_HEAD}<config>\n"
             + "".join(_object_settings(n, obj) for n, obj in zip(numbers, objects))
             + "  <plate>\n"
             '    <metadata key="plater_id" value="1"/>\n'
-            '    <metadata key="plater_name" value=""/>\n'
-            '    <metadata key="locked" value="false"/>\n'
+            + _keyed(plate, "    ")
             + "".join(_model_instance(n) for n in numbers)
             + "  </plate>\n</config>\n")
 
@@ -184,22 +188,30 @@ def _model_rels(count: int) -> str:
 
 
 def write_plate(path: str | Path, objects: list[PlateObject],
-                project_settings: bytes | None = None) -> None:
+                project_settings: bytes | None = None, *,
+                metadata: list[tuple[str, str]] | None = None,
+                plate_settings: dict[str, str] | None = None) -> None:
     """Escribe un 3MF con una o varias piezas en una sola placa.
 
     Cada pieza va en su propio 3D/Objects/object_N.model, con su envoltorio, su <item> y sus
     ajustes. Se coloca con la transformación del <item>, sin tocar los vértices; así la malla
     queda tal como se pintó. Sin ajustes de proyecto, Orca abre el archivo con los presets
     que tenga seleccionados.
+
+    metadata sustituye a la Application que se deduce de los ajustes de proyecto: es la del
+    3MF que el laminador guardó, cuando se conservan sus opciones (ver project.read_previous).
+    plate_settings son ajustes de la placa, como los de esa misma placa guardada.
     """
     if not objects:
         raise ValueError("Una placa necesita al menos una pieza")
     objects = [PlateObject(np.asarray(o.vertices, dtype=float), np.asarray(o.faces, dtype=np.int64),
                            o.support, o.seam, o.name, o.settings, o.center) for o in objects]
     main_meta = _VERSION_META
-    if project_settings is not None:
-        application = application_version(project_settings)
-        main_meta = f' <metadata name="Application">{application}</metadata>\n{_VERSION_META}'
+    if project_settings is not None and metadata is None:
+        metadata = [("Application", application_version(project_settings))]
+    if metadata:
+        main_meta = "".join(f" <metadata name={quoteattr(k)}>{escape(v)}</metadata>\n"
+                            for k, v in metadata) + _VERSION_META
 
     with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED, compresslevel=6) as z:
         z.writestr("[Content_Types].xml", CONTENT_TYPES)
@@ -208,7 +220,7 @@ def write_plate(path: str | Path, objects: list[PlateObject],
             _write_object(z, number, obj)
         z.writestr("3D/3dmodel.model", _main_model(objects, main_meta))
         z.writestr("3D/_rels/3dmodel.model.rels", _model_rels(len(objects)))
-        z.writestr("Metadata/model_settings.config", _model_settings(objects))
+        z.writestr("Metadata/model_settings.config", _model_settings(objects, plate_settings or {}))
         if project_settings is not None:
             z.writestr(PROJECT_FILE, project_settings)
 

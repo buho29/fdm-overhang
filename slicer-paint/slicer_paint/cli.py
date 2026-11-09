@@ -76,6 +76,9 @@ def build_parser() -> argparse.ArgumentParser:
                         help="slicer de destino; por defecto el de --open, o orca")
     parser.add_argument("--project-settings", metavar="ARCHIVO",
                         help="con destino bambu, ajustes de este .3mf o .config en vez de la plantilla P1S")
+    parser.add_argument("--fresh", action="store_true",
+                        help="si el 3MF de salida ya existe, no conserva las opciones de impresión "
+                             "que guardó el laminador")
     parser.add_argument("--open", choices=["orca", "bambu"], help="abre el resultado en el slicer")
     return parser
 
@@ -209,6 +212,23 @@ def prepare_plate(args: argparse.Namespace) -> list[PreparedPart]:
     return parts
 
 
+def kept_settings(args: argparse.Namespace, output: Path, target: str) -> project.Previous | None:
+    """Las opciones de impresión del 3MF de salida, si ya existe y las guardó el laminador de
+    destino: proyecto, ajustes de cada objeto (por su nombre) y de la placa. Los ajustes de
+    otro laminador no se conservan, porque no los aceptaría."""
+    if args.fresh or not output.exists():
+        return None
+    previous = project.read_previous(output)
+    if previous is None:
+        return None
+    if previous.slicer != target:
+        print(f"Aviso: {output.name} se guardó con {previous.slicer} y el destino es {target}: "
+              "sus opciones de impresión no se conservan", file=sys.stderr)
+        return None
+    print(f"Conservadas las opciones de impresión de {output.name}")
+    return previous
+
+
 def part_settings(args: argparse.Namespace, part: PreparedPart) -> dict[str, str]:
     """Ajustes del objeto: soportes activados solo si la pieza tiene pintura de soportes."""
     if not part.support.is_painted():
@@ -244,18 +264,27 @@ def main(argv: list[str] | None = None) -> int:
             parts = [prepare_part(args, Path(args.input).stem, mesh, job, warnings)]
             for warning in warnings:
                 print(f"Aviso: {warning}", file=sys.stderr)
-        project_settings = (project.load_project_settings(args.project_settings)
-                            if target == "bambu" else None)
+        output = Path(args.output)
+        previous = kept_settings(args, output, target)
+        if args.project_settings:
+            project_settings = project.load_project_settings(args.project_settings)
+        elif previous:
+            project_settings = previous.project_settings
+        else:
+            project_settings = project.load_project_settings() if target == "bambu" else None
     except (ValueError, OSError) as exc:
         print(f"Error: {exc}", file=sys.stderr)
         return 2
 
     centers, fits = plate.arrange([tuple(p.oriented.extents[:2]) for p in parts])
-    output = Path(args.output)
     output.parent.mkdir(parents=True, exist_ok=True)
+    kept_objects = previous.objects if previous else {}
     write_plate(output, [PlateObject(p.oriented.vertices, p.oriented.faces, p.support, p.seam,
-                                     p.name, part_settings(args, p), center)
-                         for p, center in zip(parts, centers)], project_settings)
+                                     p.name, {**kept_objects.get(p.name, {}), **part_settings(args, p)},
+                                     center)
+                         for p, center in zip(parts, centers)], project_settings,
+                metadata=previous.metadata if previous and not args.project_settings else None,
+                plate_settings=previous.plate if previous else None)
 
     for number, part in enumerate(parts, 1):
         if args.plate:

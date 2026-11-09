@@ -347,6 +347,74 @@ def test_project_settings_are_read_from_a_project_file(tmp_path):
         project.load_project_settings(empty)
 
 
+def _save_in_slicer(path, slicer):
+    """Imita guardar el 3MF en el laminador tras cambiar opciones: proyecto, objeto y placa.
+    Orca escribe la misma Application que Bambu y además su metadata OrcaSlicer (repetida)."""
+    settings = json.loads(project.DEFAULT_TEMPLATE.read_bytes())
+    settings["wall_loops"] = "5"
+    entries = {}
+    with zipfile.ZipFile(path) as z:
+        for name in z.namelist():
+            entries[name] = z.read(name)
+    meta = ' <metadata name="Application">BambuStudio-02.08.01.55</metadata>\n'
+    if slicer == "orca":
+        meta += ' <metadata name="OrcaSlicer">2.5.0-dev</metadata>\n' * 2
+    model = re.sub(r' <metadata name="Application">[^<]*</metadata>\n', "",
+                   entries["3D/3dmodel.model"].decode())
+    entries["3D/3dmodel.model"] = model.replace("<resources>", meta + "<resources>", 1).encode()
+    entries["Metadata/model_settings.config"] = (
+        entries["Metadata/model_settings.config"].decode()
+        .replace('<metadata key="extruder" value="1"/>',
+                 '<metadata key="extruder" value="2"/>\n    <metadata key="wall_loops" value="4"/>', 1)
+        .replace('<metadata key="plater_name" value=""/>',
+                 '<metadata key="plater_name" value="mi placa"/>\n'
+                 '    <metadata key="thumbnail_file" value="Metadata/plate_1.png"/>', 1).encode())
+    entries[project.PROJECT_FILE] = json.dumps(settings).encode()
+    with zipfile.ZipFile(path, "w") as z:
+        for name, data in entries.items():
+            z.writestr(name, data)
+    return entries[project.PROJECT_FILE]
+
+
+@pytest.mark.parametrize("slicer", ["orca", "bambu"])
+def test_rewriting_keeps_the_print_options_the_slicer_saved(tmp_path, slicer):
+    stl = tmp_path / "t.stl"
+    probeta().export(stl)
+    out = tmp_path / "t.3mf"
+    args = [str(stl), "-o", str(out), "--orient", "none", "--target", slicer, "--support-overhang", "45"]
+    assert cli.main(args) == 0
+    saved = _save_in_slicer(out, slicer)
+    assert cli.main(args) == 0
+    assert _read_entry(out, project.PROJECT_FILE).encode() == saved
+    main = _read_entry(out, "3D/3dmodel.model")
+    assert main.count('<metadata name="Application">BambuStudio-02.08.01.55</metadata>') == 1
+    assert main.count('name="OrcaSlicer"') == (1 if slicer == "orca" else 0)
+    root = ET.fromstring(_read_entry(out, "Metadata/model_settings.config"))
+    obj = {m.get("key"): m.get("value") for m in root.find("object").findall("metadata")}
+    assert obj["extruder"] == "2" and obj["wall_loops"] == "4"
+    assert obj["enable_support"] == "1"            # la pintura de soportes sigue mandando
+    plate_meta = {m.get("key"): m.get("value") for m in root.find("plate").findall("metadata")}
+    assert plate_meta["plater_name"] == "mi placa" and plate_meta["plater_id"] == "1"
+    assert "thumbnail_file" not in plate_meta      # las miniaturas no se copian
+
+
+def test_fresh_or_another_slicer_discards_the_saved_print_options(tmp_path, capsys):
+    stl = tmp_path / "t.stl"
+    probeta().export(stl)
+    out = tmp_path / "t.3mf"
+    assert cli.main([str(stl), "-o", str(out), "--orient", "none"]) == 0
+    _save_in_slicer(out, "orca")
+    assert cli.main([str(stl), "-o", str(out), "--orient", "none", "--fresh"]) == 0
+    assert _read_entry(out, project.PROJECT_FILE) is None
+    assert 'key="wall_loops"' not in _read_entry(out, "Metadata/model_settings.config")
+    _save_in_slicer(out, "orca")
+    capsys.readouterr()
+    assert cli.main([str(stl), "-o", str(out), "--orient", "none", "--target", "bambu"]) == 0
+    assert "se guardó con orca" in capsys.readouterr().err
+    assert _read_entry(out, project.PROJECT_FILE).encode() == project.DEFAULT_TEMPLATE.read_bytes()
+    assert project.read_previous(tmp_path / "no.3mf") is None
+
+
 def test_cli_rejects_contradictory_targets(tmp_path, capsys):
     stl = tmp_path / "t.stl"
     probeta().export(stl)
