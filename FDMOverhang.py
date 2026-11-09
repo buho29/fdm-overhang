@@ -5,8 +5,8 @@
 # - "Espesor y espacios": mapa de color del espesor de las paredes o del espacio entre superficies (rojo lo
 #   estrecho -> azul lo ancho), o solo lo que no llega al mínimo.
 # Son gráficos personalizados: no tocan el diseño ni la línea de tiempo y se borran al cerrar el diálogo.
-# - "Enviar al laminador": exporta un cuerpo en STL con su cama, dónde forzar o prohibir la costura y los soportes
-#   (lo elegido y lo que tiene poca holgura), y lo pasa a slicer-paint, que genera el 3MF pintado.
+# - "Enviar al laminador": exporta uno o varios cuerpos en STL con su cama y dónde forzar o prohibir la costura y
+#   los soportes, y los pasa a slicer-paint, que genera el 3MF pintado.
 import importlib
 import json
 import os
@@ -90,7 +90,7 @@ def _load_settings():
          'quality': 'normal', 'keep': False, 'bridge': True, 'bridge_max': 23.0,
          'th_bodies': 'visible', 'th_res': 'coarse', 'th_paint': 'map', 'th_limit': 0.8, 'th_lo': 0.0,
          'th_hi': 4.0, 'th_keep': False, 'th_mode': 'thickness', 'gap_limit': 0.1, 'gap_lo': 0.0, 'gap_hi': 2.0,
-         'th_xray': True, 'sl_bed': _default_bed(), 'sl_gap': True, 'sl_gap_limit': 0.4, 'sl_res': 'normal',
+         'th_xray': True, 'sl_bed': _default_bed(),
          'sl_open': 'orca', 'sl_dir': '', 'slicer_paint': '', 'sl_what': 'one', 'sl_mesh': 'high'}
     try:
         with open(SETTINGS, encoding='utf-8') as f:
@@ -1051,7 +1051,6 @@ SL_ROLES = [('sl_seam_on', 'seam', 'enforce', (0, 190, 230), 'costura forzada'),
             ('sl_seam_off', 'seam', 'block', (255, 150, 0), 'costura prohibida'),
             ('sl_sup_on', 'support', 'enforce', (60, 200, 60), 'soportes forzados'),
             ('sl_sup_off', 'support', 'block', (220, 30, 30), 'soportes bloqueados')]
-SL_TIGHT_COLOR = (240, 220, 0)   # poca holgura: también costura prohibida, pero medida y no elegida
 SL_WHAT = [('one', 'Este cuerpo'), ('plate', 'Varios en una placa')]
 ROLE_KEYS = [r[0] for r in SL_ROLES]
 # Lo elegido para cada cuerpo se guarda en el diseño, con atributos de Fusion, y se recupera al volver a abrirlo:
@@ -1074,9 +1073,7 @@ def _sl_read(inputs):
     i = _sl_index(inputs)
     return {'sl_body': _sl_state['bodies'][i][0] if i is not None else None,
             'sl_what': _choice(inputs, 'sl_what', SL_WHAT), 'sl_bed': _choice(inputs, 'sl_bed', BEDS),
-            'sl_gap': inputs.itemById('sl_gap').value,
-            'sl_gap_limit': round(inputs.itemById('sl_gap_limit').value * 10, 4),   # mm
-            'sl_res': _choice(inputs, 'sl_res', RESOLUTIONS), 'sl_mesh': _choice(inputs, 'sl_mesh', SL_MESH),
+            'sl_mesh': _choice(inputs, 'sl_mesh', SL_MESH),
             'sl_open': _choice(inputs, 'sl_open', OPEN_IN)}
 
 
@@ -1311,22 +1308,6 @@ def _sl_bed(cfg, body):
     return S.bed_vector('face', n)
 
 
-def _sl_gap(design, s, sent, may_measure):
-    """[(malla, medida)] de la holgura de cada cuerpo de 'sent' frente a los demás sólidos y mallas visibles, o
-    None en todos si no se mide: si está desactivada o, sin may_measure, si no está ya medida. Una sola medida para
-    todos, para que la vista previa y el envío de una placa compartan la caché."""
-    if not s['sl_gap'] or s['sl_gap_limit'] <= 0:
-        return [None] * len(sent)
-    tokens = {b.entityToken for b in sent}
-    others = [b for b in _visible_bodies(design.rootComponent) if b.entityToken not in tokens
-              and (adsk.fusion.MeshBody.cast(b) or getattr(b, 'isSolid', False))]
-    bodies, cast = list(sent) + others, tuple(range(len(sent)))
-    if not may_measure and _gap_key(bodies, s['sl_res'], cast) not in _gap_cache:
-        return [None] * len(sent)
-    meshes, results = _gap_measure(design, bodies, s['sl_res'], cast)
-    return [(meshes[i], results[i]) for i in cast]
-
-
 def _count(n_edges, n_faces):
     parts = []
     if n_edges:
@@ -1336,10 +1317,8 @@ def _count(n_edges, n_faces):
     return ', '.join(parts)
 
 
-def _sl_collect(design, s, body, cfg, gap):
-    """(archivo de pieza o None, html, capas, aristas [(coords, color)]) de un cuerpo con lo elegido para él (cfg)
-    y su holgura (gap, de _sl_gap). Sin gap, la poca holgura no entra: medir puede tardar y no se hace al abrir ni
-    con cada cambio."""
+def _sl_collect(body, cfg):
+    """(archivo de pieza o None, html, capas, aristas [(coords, color)]) de un cuerpo con lo elegido para él (cfg)."""
     bed = _sl_bed(cfg, body)
     if isinstance(bed, str):
         return None, bed, [], []
@@ -1363,34 +1342,13 @@ def _sl_collect(design, s, body, cfg, gap):
                 pts = _sl_edge(edge, body)
                 edges.append(S.edge([pts[i:i + 3] for i in range(0, len(pts), 3)]))
                 lines.append((pts, rgb))
-        roles['%s_%s' % (kind, role)] = [edges, faces, []]
+        roles['%s_%s' % (kind, role)] = S.selection(edges, faces)
         if edges or faces:
             rows.append(sq % (rgb + ('%s: %s' % (tr(label), _count(len(edges), len(faces))),)))
 
-    tight_html = ''
-    if s['sl_gap']:
-        if s['sl_gap_limit'] <= 0:
-            return None, tr('El espacio mínimo tiene que ser mayor que 0.'), layers, lines
-        if not gap:
-            tight_html = tr('La holgura se mide al pulsar <b>Medir holgura</b> o al enviar.')
-        else:
-            (c, n, idx, _, lift), (vals, kinds, _) = gap
-            tris = S.tight_triangles(vals, kinds, s['sl_gap_limit'] / 10.0, GAP_MARGIN)
-            zone = S.patch(c, idx, tris)
-            if zone:
-                roles['seam_block'][2].append(zone)
-                layers.append(_soup(c, n, [idx[3 * t + k] for t in tris for k in range(3)], SL_TIGHT_COLOR, lift))
-                area = sum(T._tri(c, idx, 3 * t)[2] for t in tris) * 100
-                tight_html = sq % (SL_TIGHT_COLOR + (tr('poca holgura (menos de %s mm): %.0f mm², costura prohibida')
-                                                     % (_mm(s['sl_gap_limit']), area),))
-            else:
-                tight_html = tr('Ninguna cara tiene menos de %s mm de holgura.') % _mm(s['sl_gap_limit'])
-
-    job = S.job(body.name, bed, **{k: S.selection(*v) for k, v in roles.items()})
+    job = S.job(body.name, bed, **roles)
     html = [tr('Cuerpo: <b>%s</b>') % body.name, tr('Cama: %s') % tr(dict(BEDS)[cfg['bed']]), '']
     html += rows or [tr('Nada elegido a mano.')]
-    if tight_html:
-        html.append(tight_html)
     return job, '<br>'.join(html), layers, lines
 
 
@@ -1406,12 +1364,6 @@ def _sl_paint(design, layers, lines):
         ln.weight = 4
         ln.color = adsk.fusion.CustomGraphicsSolidColorEffect.create(adsk.core.Color.create(*(rgb + (255,))))
         ln.depthPriority = 2
-
-
-def _close_busy():
-    busy = _th_state.pop('busy', None)
-    if busy:
-        busy.close()
 
 
 def _sl_draw(inputs):
@@ -1437,11 +1389,7 @@ def _sl_draw(inputs):
                 if plate and not cfg['plate']:
                     head.append(tr('Este cuerpo no va en la placa.'))
                 head.append('')
-            # con el cuerpo en la placa se miden todos los de la placa, como al enviar, para no repetir la medida
-            sent = [b for _, _, b, _ in plate] if cfg['plate'] and plate else [body]
-            pos = [i for i, _, _, _ in plate].index(_sl_state['current']) if len(sent) > 1 else 0
-            gap = _sl_gap(design, s, sent, _sl_state.pop('run', False))[pos]
-            _, html, layers, lines = _sl_collect(design, s, body, cfg, gap)
+            _, html, layers, lines = _sl_collect(body, cfg)
             exe = S.find_exe(_load_settings()['slicer_paint'])
             tail = ['', '<font color="#888">slicer-paint: %s</font>' % exe if exe else
                     '<font color="#c80">⚠ %s</font>' % tr('No encuentro slicer-paint: al enviar te preguntaré '
@@ -1453,20 +1401,14 @@ def _sl_draw(inputs):
     if _sl_state.get('html') != html:
         _sl_state['html'] = html
         inputs.itemById('sl_info').formattedText = html
-    try:
-        if design:
-            _sl_paint(design, layers, lines)
-        _app.activeViewport.refresh()
-    finally:
-        _close_busy()
+    if design:
+        _sl_paint(design, layers, lines)
+    _app.activeViewport.refresh()
 
 
 def _sl_update_visibility(inputs):
     inputs.itemById('sl_face').isVisible = _choice(inputs, 'sl_bed', BEDS) == 'face'
     inputs.itemById('sl_plate').isVisible = _choice(inputs, 'sl_what', SL_WHAT) == 'plate'
-    gap = inputs.itemById('sl_gap').value
-    for k in ('sl_gap_limit', 'sl_res', 'sl_measure'):
-        inputs.itemById(k).isVisible = gap
 
 
 def _sl_target(s, name):
@@ -1546,15 +1488,12 @@ def _sl_send(design, s, inputs):
     _sl_store(design, current_cfg)   # después de leer el diálogo, que guardar vacía campos
     if not items:
         return tr('Ningún cuerpo en la placa: marca Incluir en la placa en los que quieras enviar.')
-    gaps = _sl_gap(design, s, [b for _, b, _ in items], True)
     jobs = []
-    for (name, body, cfg), gap in zip(items, gaps):
-        job, html, _, _ = _sl_collect(design, s, body, cfg, gap)
+    for name, body, cfg in items:
+        job, html, _, _ = _sl_collect(body, cfg)
         if job is None:
-            _close_busy()
             return ('%s: %s' % (name, html) if plate else html).replace('<br>', '\n')
         jobs.append(job)
-    _close_busy()
     names = [name for name, _, _ in items]
     target = _sl_target(_load_settings(), tr('placa') if plate else names[0])
     if not target:
@@ -1637,7 +1576,6 @@ class _SlCreatedHandler(adsk.core.CommandCreatedEventHandler):
             cmd = args.command
             _sl_state['cmd'] = cmd
             _sl_state.pop('html', None)
-            _sl_state.pop('run', None)
             _sl_state.pop('shown', None)
             # lo que esté seleccionado al abrir, Fusion lo mete en el campo que tiene el foco: también lo del envío
             # anterior, que podría acabar en otro papel
@@ -1648,15 +1586,13 @@ class _SlCreatedHandler(adsk.core.CommandCreatedEventHandler):
             cmd.setDialogMinimumSize(380, 300)
             inputs = cmd.commandInputs
             s = _load_settings()
-            VS = adsk.core.ValueInput.createByString
-
             dd = inputs.addDropDownCommandInput('sl_what', tr('Enviar'), adsk.core.DropDownStyles.TextListDropDownStyle)
             for key, label in SL_WHAT:
                 dd.listItems.add(tr(label), key == s['sl_what'])
             dd.tooltip = tr('Un cuerpo en su 3MF, o varios en una sola placa: los marcados con Incluir en la placa, '
                             'cada uno con lo que tenga elegido.')
             dd = inputs.addDropDownCommandInput('sl_body', tr('Cuerpo'), adsk.core.DropDownStyles.TextListDropDownStyle)
-            dd.tooltip = tr('El cuerpo que vas a imprimir. Los demás cuerpos visibles solo cuentan al medir la holgura.')
+            dd.tooltip = tr('El cuerpo que vas a imprimir.')
             design = adsk.fusion.Design.cast(_app.activeProduct)
             bodies = _sl_bodies(design)
             _sl_state['bodies'] = bodies
@@ -1696,20 +1632,6 @@ class _SlCreatedHandler(adsk.core.CommandCreatedEventHandler):
                     sel.addSelectionFilter('Edges')
                     sel.setSelectionLimits(0, 0)
                     sel.tooltip = tips[key]
-                if keys[0] != 'sl_seam_on':
-                    continue
-                gap = gi.addBoolValueInput('sl_gap', tr('Prohibir donde hay poca holgura'), True, '', bool(s['sl_gap']))
-                gap.tooltip = tr('Mide el espacio delante de cada cara, como Espesor y espacios, y prohíbe la costura '
-                                 'donde no llega al mínimo, toca otra pieza o se mete en ella: la costura abulta.')
-                gi.addValueInput('sl_gap_limit', tr('Espacio mínimo'), 'mm', VS('%s mm' % s['sl_gap_limit']))
-                dd = gi.addDropDownCommandInput('sl_res', tr('Resolución'), adsk.core.DropDownStyles.TextListDropDownStyle)
-                for key, label, _ in RESOLUTIONS:
-                    dd.listItems.add(tr(label), key == s['sl_res'])
-                btn = gi.addBoolValueInput('sl_measure', '', False, '', False)
-                btn.text = tr('Medir holgura')
-                btn.isFullWidth = True
-                btn.tooltip = tr('Mide ahora para ver en amarillo dónde se prohibirá la costura. Si no, se mide al '
-                                 'enviar.')
             dd = inputs.addDropDownCommandInput('sl_mesh', tr('Malla del STL'),
                                                 adsk.core.DropDownStyles.TextListDropDownStyle)
             for key, label, _, _ in SL_MESH:
@@ -1766,9 +1688,6 @@ class _SlChangedHandler(adsk.core.InputChangedEventHandler):
     def notify(self, args):
         if args.input.id == 'sl_info':
             return
-        if args.input.id == 'sl_measure':
-            _sl_state['run'] = True   # lo atiende la vista previa que Fusion lanza a continuación
-            return
         if _sl_state.get('loading'):
             return
         inputs = args.firingEvent.sender.commandInputs
@@ -1815,8 +1734,6 @@ class _SlExecuteHandler(adsk.core.CommandEventHandler):
                 _ui.messageBox(msg, tr('Enviar al laminador'))
         except Exception:
             _ui.messageBox(tr('Enviar al laminador: error') + '\n' + traceback.format_exc())
-        finally:
-            _close_busy()
 
 
 class _SlDestroyHandler(adsk.core.CommandEventHandler):
@@ -1825,7 +1742,6 @@ class _SlDestroyHandler(adsk.core.CommandEventHandler):
             if _sl_state.get('cmd') is not None and args.command != _sl_state['cmd']:
                 return   # se ha vuelto a pulsar el botón con el diálogo abierto: el nuevo ya está en marcha
             _clear(SL_GROUP_ID)
-            _gap_cache.clear()
             for k in ('cmd', 'html', 'cfgs', 'touched', 'current', 'bodies', 'shown'):
                 _sl_state.pop(k, None)
             _app.activeViewport.refresh()
@@ -1889,8 +1805,8 @@ def run(context):
             sl_def.deleteMe()
         sl_def = _ui.commandDefinitions.addButtonDefinition(
             SL_CMD_ID, tr('Enviar al laminador'),
-            tr('Exporta un cuerpo con su cama y con dónde forzar o prohibir la costura y los soportes, también donde '
-               'hay poca holgura, y lo abre en el laminador con slicer-paint.'),
+            tr('Exporta un cuerpo con su cama y con dónde forzar o prohibir la costura y los soportes, y lo abre en el '
+               'laminador con slicer-paint.'),
             os.path.join(HERE, 'resources', 'slicer'))
         h = _SlCreatedHandler()
         sl_def.commandCreated.add(h)

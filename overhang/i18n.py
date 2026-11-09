@@ -129,14 +129,13 @@ EN = {
     '%d triángulos en %.2f s': '%d triangles in %.2f s',
     # ------------------------------------------------ enviar al laminador
     'Enviar al laminador': 'Send to slicer',
-    'Exporta un cuerpo con su cama y con dónde forzar o prohibir la costura y los soportes, también donde '
-    'hay poca holgura, y lo abre en el laminador con slicer-paint.':
-        'Exports a body with its bed face and where to enforce or block the seam and supports, also where the '
-        'clearance is small, and opens it in the slicer with slicer-paint.',
+    'Exporta un cuerpo con su cama y con dónde forzar o prohibir la costura y los soportes, y lo abre en el '
+    'laminador con slicer-paint.':
+        'Exports a body with its bed face and where to enforce or block the seam and supports, and opens it in '
+        'the slicer with slicer-paint.',
     'Enviar': 'Send',
     'Cuerpo': 'Body',
-    'El cuerpo que vas a imprimir. Los demás cuerpos visibles solo cuentan al medir la holgura.':
-        'The body you are going to print. The other visible bodies only count when measuring the clearance.',
+    'El cuerpo que vas a imprimir.': 'The body you are going to print.',
     'No hay ningún cuerpo sólido visible.': 'There is no visible solid body.',
     'Costura': 'Seam',
     'Soportes': 'Supports',
@@ -149,14 +148,6 @@ EN = {
     'Caras donde forzar soportes. Solo cuenta lo que mire hacia abajo una vez orientada la pieza.':
         'Faces where supports are enforced. Only what faces down once the part is oriented counts.',
     'Caras donde no puede haber soportes.': 'Faces where supports are not allowed.',
-    'Prohibir donde hay poca holgura': 'Block where clearance is small',
-    'Mide el espacio delante de cada cara, como Espesor y espacios, y prohíbe la costura donde no llega al mínimo, '
-    'toca otra pieza o se mete en ella: la costura abulta.':
-        'Measures the space in front of each face, like Thickness and gaps, and blocks the seam where it is below '
-        'the minimum, touches another part or goes into it: the seam bulges.',
-    'Medir holgura': 'Measure clearance',
-    'Mide ahora para ver en amarillo dónde se prohibirá la costura. Si no, se mide al enviar.':
-        'Measures now to show in yellow where the seam will be blocked. Otherwise it is measured when sending.',
     'Abrir en': 'Open in',
     'No abrir': 'Do not open',
     'Malla del STL': 'STL mesh',
@@ -180,11 +171,6 @@ EN = {
     'Cuerpo: <b>%s</b>': 'Body: <b>%s</b>',
     'Cama: %s': 'Bed: %s',
     'Nada elegido a mano.': 'Nothing selected by hand.',
-    'La holgura se mide al pulsar <b>Medir holgura</b> o al enviar.':
-        'Clearance is measured when you press <b>Measure clearance</b> or when sending.',
-    'poca holgura (menos de %s mm): %.0f mm², costura prohibida':
-        'small clearance (below %s mm): %.0f mm², seam blocked',
-    'Ninguna cara tiene menos de %s mm de holgura.': 'No face has less than %s mm of clearance.',
     'Lo elegido tiene que ser del cuerpo que se envía.': 'What you select must belong to the body being sent.',
     'No se pudo recorrer una arista.': 'An edge could not be traced.',
     'No encuentro slicer-paint: al enviar te preguntaré dónde está.':
