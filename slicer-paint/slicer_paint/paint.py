@@ -27,6 +27,13 @@ _EDGE_CHECK_POINTS = 8
 _FACE_SAMPLE_MM = 0.25
 _FACE_TOLERANCE_MM = 0.2
 _FACE_MIN_COS = np.cos(np.radians(30.0))
+# Después, cada vértice del triángulo tiene que estar sobre la superficie de la cara, a esta
+# distancia como mucho (mm). Los vértices del STL están sobre la superficie real, y la malla de la
+# cara se separa de ella menos de 0,04 mm con la tolerancia del add-in. Si no, entran triángulos de
+# la cara de al lado y el borde sale en dientes de sierra, sobre todo entre caras tangentes, como
+# la pupila sobre el ojo.
+_FACE_EXACT_MM = 0.06
+_FACE_EXACT_NEIGHBOURS = 8
 # Una zona se pinta a esta distancia de sus muestras, que van cada _FACE_SAMPLE_MM: el borde
 # queda con esta precisión (mm).
 _PATCH_TOLERANCE_MM = 0.2
@@ -153,9 +160,26 @@ def face_mask(mesh: trimesh.Trimesh, face: Face) -> np.ndarray:
     distance, nearest = cKDTree(centers).query(mesh.triangles_center[candidates])
     # La orientación de la malla de Fusion no importa: se compara la dirección, no el sentido.
     alike = np.abs((mesh.face_normals[candidates] * normals[nearest]).sum(axis=1)) > _FACE_MIN_COS
+    picked = candidates[(distance <= _FACE_TOLERANCE_MM) & alike]
+    if len(picked):
+        used = np.unique(mesh.faces[picked])
+        gap = _distance_to_triangles(corners, centers, mesh.vertices[used])
+        far = np.zeros(len(mesh.vertices), dtype=bool)
+        far[used[gap > _FACE_EXACT_MM]] = True
+        picked = picked[~far[mesh.faces[picked]].any(axis=1)]
     mask = np.zeros(len(mesh.faces), dtype=bool)
-    mask[candidates[(distance <= _FACE_TOLERANCE_MM) & alike]] = True
+    mask[picked] = True
     return mask
+
+
+def _distance_to_triangles(corners: np.ndarray, centers: np.ndarray, points: np.ndarray) -> np.ndarray:
+    """Distancia de cada punto a una malla de triángulos pequeños (corners), mirando solo los más
+    cercanos por su centro."""
+    k = min(_FACE_EXACT_NEIGHBOURS, len(centers))
+    nearest = cKDTree(centers).query(points, k=k)[1].reshape(len(points), k)
+    repeated = np.repeat(points, k, axis=0)
+    closest = trimesh.triangles.closest_point(corners[nearest.ravel()], repeated)
+    return np.linalg.norm(closest - repeated, axis=1).reshape(len(points), k).min(axis=1)
 
 
 def patch_region(patch: Patch) -> tuple[PatchRegion, cKDTree, np.ndarray]:
@@ -208,7 +232,7 @@ def paint_selection(layer: PaintLayer, mesh: trimesh.Trimesh, selection: Selecti
                              "¿el STL es de otra versión o de otra posición?")
         if abs(found - face.area) > _FACE_AREA_TOLERANCE * face.area:
             warnings.append(f"La cara {number} mide {face.area:.1f} mm² en Fusion, pero en el STL "
-                            f"solo se reconocen {found:.1f} mm²")
+                            f"se reconocen {found:.1f} mm²")
         if not mask.any():
             warnings.append(f"La cara {number} no tiene ningún triángulo donde pueda actuar esta pintura")
         layer.set_faces(mask, state)

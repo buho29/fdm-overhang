@@ -112,11 +112,16 @@ Para imprimir con varios filamentos (AMS): el cuerpo va con un filamento y algun
 | `body` | No | Filamento del cuerpo: lo que no se pinta. Por defecto, el 1 |
 | `paint` | No | Zonas de color. Cada una es una [selección](#selección) con `faces` y `patches`, sin `edges`, y su `filament` |
 | `filament` | Sí | Número de filamento en el laminador, de 1 a 17 |
-| `rgb` | No | Color como `#RRGGBB`. Solo sirve para los mensajes: el laminador usa el color del filamento que tenga en ese número |
+| `rgb` | No | Color como `#RRGGBB`. Con destino Bambu, es el color de ese filamento en el proyecto; con destino Orca, solo sale en los mensajes |
 
 - El filamento del cuerpo se escribe como filamento del objeto (`extruder`), aunque el 3MF que se reescribe tuviera otro.
 - Si dos zonas se pisan, gana la última.
-- El 3MF **no lleva los colores de los filamentos**: con destino Orca no puede llevar ajustes de proyecto. slicer-paint escribe qué color va en cada filamento («Colores: filamento 1 #2060FF (cuerpo); filamento 2 #FF0000 (12.0 mm²)») y avisa si hacen falta más de uno.
+- **Destino Bambu:** el proyecto lleva un filamento por color, con el color de `rgb`, también si se conservan las opciones de un 3MF guardado.
+  - Si el proyecto tiene menos filamentos, los nuevos copian los ajustes del 1. Si tiene más, los que sobran se quedan como estaban.
+  - Un filamento de otro material que el 1, como el PC de la plantilla, pasa a ser una copia del 1 si recibe un color.
+  - La tabla de purgas se recalcula con los colores nuevos, con la fórmula de Bambu Studio. Al imprimir, se empareja cada filamento con una bobina del AMS.
+- **Destino Orca:** el 3MF no lleva los colores de los filamentos, porque no puede llevar ajustes de proyecto. slicer-paint escribe qué color va en cada filamento («Colores: filamento 1 #2060FF (cuerpo); filamento 2 #FF0000 (12.0 mm²)») y avisa si hacen falta más de uno.
+- Una cara de Fusion se reconoce en el STL por los triángulos cuyos tres vértices quedan sobre ella, a 0,06 mm como mucho. Así el borde entre dos caras tangentes, como una pupila sobre el ojo, sale limpio.
 - Cada triángulo entero se escribe con su filamento: `4` es el 1, `8` el 2, `0C` el 3 y `1C` el 4 (de 3 en adelante, `C` y después el número menos 3, al revés). Las del 3 y el 4 están comprobadas con un cubo pintado en Orca.
 
 ## Placa

@@ -271,6 +271,18 @@ def print_summary(args: argparse.Namespace, part: PreparedPart) -> None:
         print("Colores: " + color_summary(part))
 
 
+def filament_colours(parts: list[PreparedPart]) -> list[str | None]:
+    """Color de cada filamento usado en las piezas (el primero es el filamento 1), o None si no se
+    sabe; vacía sin colores."""
+    known: dict[int, str | None] = {}
+    for part in parts:
+        if part.color_plan is not None:
+            for filament, rgb in part.color_plan.filaments().items():
+                if known.get(filament) is None:
+                    known[filament] = rgb
+    return [known.get(n) for n in range(1, max(known, default=0) + 1)]
+
+
 def color_summary(part: PreparedPart) -> str:
     """Qué filamento lleva cada color, para cargar los carretes en ese orden."""
     plan = part.color_plan
@@ -303,6 +315,9 @@ def main(argv: list[str] | None = None) -> int:
             project_settings = previous.project_settings
         else:
             project_settings = project.load_project_settings() if target == "bambu" else None
+        colours = filament_colours(parts)
+        if project_settings is not None and colours:
+            project_settings = project.with_filament_colours(project_settings, colours)
     except (ValueError, OSError) as exc:
         print(f"Error: {exc}", file=sys.stderr)
         return 2
@@ -327,9 +342,11 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Aviso: {what} en la cama de {width:.0f} × {depth:.0f} mm; ordénalas en el laminador",
               file=sys.stderr)
     print(f"Escrito: {output} (para {target}{f', {len(parts)} piezas' if args.plate else ''})")
-    used = max((max(p.color_plan.filaments()) for p in parts if p.color_plan), default=0)
-    if used > 1:
-        print(f"Aviso: el laminador tiene que tener al menos {used} filamentos, cada color en "
+    if len(colours) > 1 and project_settings is not None:
+        print(f"El proyecto lleva {len(colours)} filamentos con los colores de Fusion: al imprimir, "
+              "empareja cada uno con una bobina del AMS")
+    elif len(colours) > 1:
+        print(f"Aviso: el laminador tiene que tener al menos {len(colours)} filamentos, cada color en "
               "el número que dice «Colores»", file=sys.stderr)
     if args.open:
         try:

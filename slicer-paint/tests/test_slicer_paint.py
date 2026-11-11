@@ -977,3 +977,63 @@ def test_cli_plate_rejects_options_of_a_single_part(tmp_path, capsys, extra, mes
 def test_cli_needs_an_input_or_a_plate(tmp_path, capsys):
     assert cli.main(["-o", str(tmp_path / "p.3mf")]) == 2
     assert "--plate" in capsys.readouterr().err
+
+
+def _grid(x0, x1, y0, y1, step):
+    """Rejilla de triángulos en el plano z = 0."""
+    xs, ys = np.arange(x0, x1 + step / 2, step), np.arange(y0, y1 + step / 2, step)
+    gx, gy = np.meshgrid(xs, ys, indexing="ij")
+    vertices = np.column_stack([gx.ravel(), gy.ravel(), np.zeros(gx.size)])
+    i = np.arange(len(xs) - 1)[:, None] * len(ys) + np.arange(len(ys) - 1)[None, :]
+    i = i.ravel()
+    a, b, c, d = i, i + len(ys), i + len(ys) + 1, i + 1
+    return vertices, np.vstack([np.column_stack([a, b, c]), np.column_stack([a, c, d])])
+
+
+def test_face_stops_at_the_edge_of_a_tangent_neighbour():
+    # Dos caras en la misma superficie, como la pupila sobre el ojo: los triángulos finos de la de
+    # al lado, junto al borde, quedan a menos de la tolerancia de las muestras, pero no son suyos.
+    stl = trimesh.Trimesh(*_grid(-2, 2, -2, 2, 0.1), process=False)
+    vertices, triangles = _grid(-2, 0, -2, 2, 0.4)
+    face = selection.Face(vertices, triangles, 8.0)
+    mask = paint.face_mask(stl, face)
+    assert np.array_equal(mask, stl.triangles_center[:, 0] < 0)
+
+
+def _template():
+    return json.loads(project.DEFAULT_TEMPLATE.read_bytes())
+
+
+def test_flush_volumes_follow_bambu_studio():
+    # Con sus mismos colores, la tabla de purgas recalculada es la que guardó Bambu Studio.
+    before = _template()
+    # El 5, de PC, sin color nuevo: así no se cambia por una copia del 1.
+    after = json.loads(project.with_filament_colours(project.DEFAULT_TEMPLATE.read_bytes(),
+                                                     before["filament_colour"][:4] + [None]))
+    assert [abs(int(a) - int(b)) <= 1 for a, b in
+            zip(after["flush_volumes_matrix"], before["flush_volumes_matrix"])] == [True] * 25
+
+
+def test_filament_colours_add_filaments_like_the_first():
+    colours = ["#876446", "#D7D0C4", "#F5F3EE", "#F08728", "#141419", "#fafafa"]
+    data = project.with_filament_colours(project.DEFAULT_TEMPLATE.read_bytes(), colours)
+    before, after = _template(), json.loads(data)
+    assert after["filament_colour"] == [c.upper() for c in colours]
+    # El 5 de la plantilla es de PC: con un color de Fusion pasa a ser una copia del 1, de PLA.
+    assert after["filament_settings_id"] == before["filament_settings_id"][:4] + before["filament_settings_id"][:1] * 2
+    assert after["filament_type"] == ["PLA"] * 6
+    assert after["nozzle_temperature"] == before["nozzle_temperature"][:8] + before["nozzle_temperature"][:2] * 2
+    assert after["filament_self_index"] == ["1", "1", "2", "2", "3", "3", "4", "4", "5", "5", "6", "6"]
+    assert len(after["filament_dev_ams_drying_temperature"]) == 24
+    assert len(after["different_settings_to_system"]) == 8
+    assert len(after["flush_volumes_matrix"]) == 36
+    # Del marrón al blanco hace falta más purga que del blanco al marrón.
+    assert int(after["flush_volumes_matrix"][0 * 6 + 5]) > int(after["flush_volumes_matrix"][5 * 6 + 0])
+    assert project.application_version(data) == project.application_version(project.DEFAULT_TEMPLATE.read_bytes())
+
+
+def test_fewer_colours_keep_the_other_filaments():
+    after = json.loads(project.with_filament_colours(project.DEFAULT_TEMPLATE.read_bytes(), ["#112233", None]))
+    before = _template()
+    assert after["filament_colour"] == ["#112233"] + before["filament_colour"][1:]
+    assert len(after["flush_volumes_matrix"]) == 25

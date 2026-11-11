@@ -102,7 +102,7 @@ Cada slicer necesita su variante, y un archivo no sirve para el otro:
 | --- | --- | --- |
 | Ajustes de proyecto | No lleva, salvo los que guardó Orca | Proyecto P1S completo, o el que guardó Bambu |
 | Metadata `Application` | No lleva; con ella sola, Orca rechaza el archivo. Con los ajustes que guardó Orca, va la suya y `OrcaSlicer` | `BambuStudio-<versión de los ajustes>` |
-| Presets al abrir | Los que tengas seleccionados | Los del proyecto, con 5 filamentos y 0,20 mm |
+| Presets al abrir | Los que tengas seleccionados | Los del proyecto, con 5 filamentos y 0,20 mm. Con colores, un filamento por color, con su color |
 
 Sin proyecto completo, Bambu Studio carga solo la geometría y la pintura, y borra `enable_support` y `support_type`. Entonces hay que activar los soportes a mano.
 
