@@ -103,6 +103,22 @@ Un sinfín y su rueda, generados con [WormGear](https://github.com/buho29/wormge
 
 Tercer botón, en **DISEÑO > INSPECCIONAR > Enviar al laminador**. Lleva una pieza de Fusion al laminador con lo que en el laminador se hace a mano: la cara que va sobre la cama, dónde poner o no la costura y dónde forzar o bloquear los soportes. Se elige sobre las caras y aristas del modelo, y el 3MF sale orientado y pintado para OrcaSlicer o Bambu Studio.
 
+![Enviar al laminador](img/laminador.png)
+
+El búho de demostración, enviado en una placa: la cama es una cara plana elegida, la costura se fuerza en dos aristas (cian) y los soportes en 26 caras (verde). Con *Colores (AMS)*, *Resultado* lista cada color con su filamento.
+
+![El búho en OrcaSlicer](img/laminador-orca.png)
+
+El mismo 3MF en OrcaSlicer: la pieza llega orientada y cada cara va al filamento de su color, con la torre de purga. En el laminador se ven los colores de los filamentos cargados, no los aspectos de Fusion.
+
+![La costura en OrcaSlicer](img/laminador-costura.png)
+
+Visto por detrás, con la herramienta de pintar la costura de OrcaSlicer: la costura forzada llega pintada en la arista elegida en Fusion. Orca la marca en verde, que es su color para forzar.
+
+![Los soportes en OrcaSlicer](img/laminador-soportes.png)
+
+Y con la de pintar soportes: las caras elegidas bajo las alas y el pico llegan pintadas para forzar soportes.
+
 | Campo | Qué hace |
 |---|---|
 | Enviar | *Este cuerpo*, en su propio 3MF, o *Varios en una placa*: todos los marcados con *Incluir en la placa*, en un solo 3MF |

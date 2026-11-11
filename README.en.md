@@ -103,6 +103,22 @@ A worm and its wheel, generated with [WormGear](https://github.com/buho29/wormge
 
 Third button, in **DESIGN > INSPECT > Send to slicer**. Takes a part from Fusion to the slicer with what you would otherwise do by hand in the slicer: the face that goes on the bed, where the seam may or may not go and where to enforce or block supports. You choose them on the model's faces and edges, and the 3MF comes out oriented and painted for OrcaSlicer or Bambu Studio.
 
+![Send to slicer](img/laminador.png)
+
+The demo owl, sent on a plate: the bed is a chosen flat face, the seam is enforced on two edges (cyan) and supports on 26 faces (green). With *Colours (AMS)*, *Result* lists each colour with its filament.
+
+![The owl in OrcaSlicer](img/laminador-orca.png)
+
+The same 3MF in OrcaSlicer: the part arrives oriented and each face goes to the filament of its colour, with the prime tower. The slicer shows the colours of the loaded filaments, not the Fusion appearances.
+
+![The seam in OrcaSlicer](img/laminador-costura.png)
+
+Seen from behind, with OrcaSlicer's seam painting tool: the enforced seam arrives painted on the edge chosen in Fusion. Orca marks it in green, its colour for enforcing.
+
+![The supports in OrcaSlicer](img/laminador-soportes.png)
+
+And with the support painting tool: the faces chosen under the wings and the beak arrive painted to enforce supports.
+
 | Field | What it does |
 |---|---|
 | Send | *This body*, in its own 3MF, or *Several on one plate*: all those ticked with *Include on the plate*, in a single 3MF |
