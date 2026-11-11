@@ -127,7 +127,7 @@ Y con la de pintar soportes: las caras elegidas bajo las alas y el pico llegan p
 | Cama | *Plano XY (Z arriba)*, *Plano XZ (Y arriba)* o *Cara plana elegida*, que se elige en *Cara sobre la cama* |
 | Costura: Forzar en / Prohibir en | Aristas o caras donde poner la costura, o donde no puede ir. Una arista solo vale para forzarla si sube respecto a las capas |
 | Soportes: Forzar en / Bloquear en | Caras donde forzar soportes, o donde no puede haberlos. Solo cuenta lo que mira hacia abajo con la pieza ya orientada |
-| Colores (AMS) | Pinta cada cara con el filamento de su color, según los aspectos de Fusion. Cada color distinto va a un filamento: el del primer cuerpo es el 1 y los demás, por orden de aparición, también entre los cuerpos de una placa. La lista de colores y filamentos sale en *Resultado*: en el laminador, carga cada color en su número |
+| Colores (AMS) | Pinta cada cara con el filamento de su color, según los aspectos de Fusion. Cada color distinto va a un filamento: el del primer cuerpo es el 1 y los demás, por orden de aparición, también entre los cuerpos de una placa. La lista de colores y filamentos sale en *Resultado*. En Bambu Studio, el proyecto lleva un filamento por color, con su color: al imprimir, empareja cada uno con una bobina del AMS. En OrcaSlicer, carga cada color en su número |
 | Malla del STL | Separación máxima entre los triángulos y la superficie: de *Baja (0,05 mm)* a *Muy alta (0,003 mm)*. *Alta* basta para imprimir; con más, la pieza tarda más en procesarse y en abrirse |
 | Abrir en | *OrcaSlicer*, *Bambu Studio* o *No abrir*. El 3MF se prepara para el laminador elegido: cada uno necesita el suyo |
 
@@ -142,6 +142,35 @@ Al pulsar **Enviar** se elige dónde guardar el 3MF. Al lado quedan el STL y el 
 - Los cuerpos dentro de ocurrencias movidas o giradas se exportan en su sitio, y se comprueba que el STL coincide con el cuerpo antes de lanzar slicer-paint.
 
 Los detalles de slicer-paint, como sus opciones y el formato del archivo de pieza, están en [slicer-paint/README.md](slicer-paint/README.md).
+
+### Desde un script (o desde Claude)
+
+Lo mismo se puede hacer sin abrir el diálogo, con funciones del complemento: así lo usa Claude por un MCP de Fusion que ejecute Python. Guardan lo elegido igual que el diálogo, así que al abrirlo sale marcado y se puede corregir a mano. Las medidas van en mm, en las coordenadas del diseño.
+
+```python
+m = next(v for v in list(sys.modules.values()) if getattr(v, 'SL_CMD_ID', None) == 'buhoFdmSlicer')
+m.analyze('Caja')                                        # voladizos, puentes y apoyo, en mm²
+m.mark(m.edges_where('Caja', along='up', box=((None, 15, None), None)), 'seam_on')
+m.mark(m.faces_where('Caja', overhang=True), 'support_on')
+m.set_body('Caja', plate=True)
+m.show()                                                 # pinta lo marcado, como el diálogo
+m.send(None, r'C:\impresion\placa.3mf', open_in='orca')  # la placa con los marcados
+m.send_status()
+```
+
+| Función | Qué hace |
+|---|---|
+| `marks(body, detail)` | Lo marcado en cada cuerpo: cama, placa y caras y aristas de cada papel |
+| `mark(entities, role)` / `unmark(entities, role)` / `clear_marks(body)` | Pone o quita caras y aristas de un papel: `seam_on`, `seam_off`, `support_on`, `support_off` |
+| `set_body(body, bed, plate)` | La cama (`'z'`, `'y'` o una cara plana) y si va en la placa |
+| `faces_where(body, …)` | Caras por orientación (`facing='down'`), voladizo, color, caja, área o papel |
+| `edges_where(body, …)` | Aristas por dirección (`along='up'`), tipo de curva, caja, longitud, caras o papel |
+| `describe(entities)` | Tipo, área o longitud, posición, normal, color y papeles de cada una |
+| `show(body)` / `hide()` | Pinta lo marcado fuera del diálogo, o lo quita |
+| `analyze(body, angle)` | Los números del diálogo de Voladizos para ese cuerpo y su cama |
+| `send(bodies, target, mesh, open_in, color)` | Exporta y lanza slicer-paint sin preguntar: un cuerpo, una lista (placa) o `None` (los marcados para la placa). Vuelve enseguida; `send_status()` dice cuándo acaba |
+
+Con un comando abierto, también el diálogo, las funciones que marcan dan error: lo que se cambia con un comando abierto, Fusion lo deshace al cerrarlo.
 
 ## Instalación
 

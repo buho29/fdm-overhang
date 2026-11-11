@@ -127,7 +127,7 @@ And with the support painting tool: the faces chosen under the wings and the bea
 | Bed | *XY plane (Z up)*, *XZ plane (Y up)* or *Selected planar face*, chosen in *Face on the bed* |
 | Seam: Enforce on / Block on | Edges or faces where the seam should go, or where it must not. An edge can only enforce the seam if it rises relative to the layers |
 | Supports: Enforce on / Block on | Faces where supports are enforced, or not allowed. Only what faces down once the part is oriented counts |
-| Colours (AMS) | Paints each face with the filament of its colour, from the Fusion appearances. Each different colour goes to a filament: the first body's is 1 and the rest follow in order of appearance, also across the bodies on a plate. The list of colours and filaments is shown in *Result*: in the slicer, load each colour in its number |
+| Colours (AMS) | Paints each face with the filament of its colour, from the Fusion appearances. Each different colour goes to a filament: the first body's is 1 and the rest follow in order of appearance, also across the bodies on a plate. The list of colours and filaments is shown in *Result*. In Bambu Studio, the project carries one filament per colour, with its colour: when printing, match each one to an AMS spool. In OrcaSlicer, load each colour in its number |
 | STL mesh | Maximum distance between the triangles and the surface: from *Low (0.05 mm)* to *Very high (0.003 mm)*. *High* is enough for printing; finer meshes take longer to process and to open |
 | Open in | *OrcaSlicer*, *Bambu Studio* or *Do not open*. The 3MF is prepared for the chosen slicer: each one needs its own |
 
@@ -142,6 +142,35 @@ While the dialog is open, what you choose is painted over the model: enforced se
 - Bodies inside moved or rotated occurrences are exported in place, and the STL is checked against the body before slicer-paint runs.
 
 The slicer-paint details, such as its options and the part file format, are in [slicer-paint/README.md](slicer-paint/README.md) (in Spanish).
+
+### From a script (or from Claude)
+
+The same can be done without opening the dialog, with functions of the add-in: this is how Claude uses it through a Fusion MCP that runs Python. They store the choices exactly like the dialog, so they show up marked when you open it and you can correct them by hand. Measurements are in mm, in design coordinates.
+
+```python
+m = next(v for v in list(sys.modules.values()) if getattr(v, 'SL_CMD_ID', None) == 'buhoFdmSlicer')
+m.analyze('Box')                                         # overhangs, bridges and bed contact, in mm²
+m.mark(m.edges_where('Box', along='up', box=((None, 15, None), None)), 'seam_on')
+m.mark(m.faces_where('Box', overhang=True), 'support_on')
+m.set_body('Box', plate=True)
+m.show()                                                 # paints the marks, like the dialog
+m.send(None, r'C:\print\plate.3mf', open_in='orca')      # the plate with the marked bodies
+m.send_status()
+```
+
+| Function | What it does |
+|---|---|
+| `marks(body, detail)` | What is marked on each body: bed, plate, and the faces and edges of each role |
+| `mark(entities, role)` / `unmark(entities, role)` / `clear_marks(body)` | Adds or removes faces and edges from a role: `seam_on`, `seam_off`, `support_on`, `support_off` |
+| `set_body(body, bed, plate)` | The bed (`'z'`, `'y'` or a planar face) and whether it goes on the plate |
+| `faces_where(body, …)` | Faces by orientation (`facing='down'`), overhang, color, box, area or role |
+| `edges_where(body, …)` | Edges by direction (`along='up'`), curve type, box, length, faces or role |
+| `describe(entities)` | Type, area or length, position, normal, color and roles of each one |
+| `show(body)` / `hide()` | Paints the marks outside the dialog, or removes them |
+| `analyze(body, angle)` | The Overhangs dialog numbers for that body and its bed |
+| `send(bodies, target, mesh, open_in, color)` | Exports and runs slicer-paint without asking: one body, a list (plate) or `None` (the bodies marked for the plate). Returns at once; `send_status()` tells when it is done |
+
+While a command is open, the dialog included, the marking functions raise an error: Fusion undoes what is changed with a command open when it closes.
 
 ## Installation
 
