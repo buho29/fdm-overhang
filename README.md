@@ -105,19 +105,23 @@ Tercer botón, en **DISEÑO > INSPECCIONAR > Enviar al laminador**. Lleva una pi
 
 ![Enviar al laminador](img/laminador.png)
 
-El búho de demostración, enviado en una placa: la cama es una cara plana elegida, la costura se fuerza en dos aristas (cian) y los soportes en 26 caras (verde). Con *Colores (AMS)*, *Resultado* lista cada color con su filamento.
+El búho de demostración, en 4 colores (uno por bobina del AMS), sobre el plano XY. La costura se fuerza en la cara de la espalda (cian) y los soportes solo donde hacen falta, en 23 caras (verde): la ceja, el pico y las puntas de las alas que cuelgan sobre la cama. Con *Colores (AMS)*, *Resultado* lista cada color con su filamento.
 
-![El búho en OrcaSlicer](img/laminador-orca.png)
+![El búho en Bambu Studio](img/laminador-bambu.png)
 
-El mismo 3MF en OrcaSlicer: la pieza llega orientada y cada cara va al filamento de su color, con la torre de purga. En el laminador se ven los colores de los filamentos cargados, no los aspectos de Fusion.
+El 3MF en Bambu Studio: cada cara va al filamento de su color, con la torre de purga. En el laminador se ven los colores de los filamentos del proyecto, no los aspectos de Fusion.
 
-![La costura en OrcaSlicer](img/laminador-costura.png)
+![La costura en Bambu Studio](img/laminador-costura.png)
 
-Visto por detrás, con la herramienta de pintar la costura de OrcaSlicer: la costura forzada llega pintada en la arista elegida en Fusion. Orca la marca en verde, que es su color para forzar.
+Visto por detrás, con la herramienta de pintar la costura de Bambu Studio: la cara de la espalda llega pintada para forzar la costura.
 
-![Los soportes en OrcaSlicer](img/laminador-soportes.png)
+![Los soportes en Bambu Studio](img/laminador-soportes.png)
 
-Y con la de pintar soportes: las caras elegidas bajo las alas y el pico llegan pintadas para forzar soportes.
+Y con la de pintar soportes: la ceja, el pico y las puntas de las alas llegan pintados para forzar soportes.
+
+![El búho laminado en Bambu Studio](img/laminador-corte.png)
+
+Laminado con soportes en árbol (manual) y *Solo en la placa*: los árboles salen de la cama, rodean el cuerpo y llegan a la ceja y al pico. Fuera de lo pintado no hay soportes.
 
 | Campo | Qué hace |
 |---|---|

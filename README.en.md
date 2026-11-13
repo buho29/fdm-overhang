@@ -105,19 +105,23 @@ Third button, in **DESIGN > INSPECT > Send to slicer**. Takes a part from Fusion
 
 ![Send to slicer](img/laminador.png)
 
-The demo owl, sent on a plate: the bed is a chosen flat face, the seam is enforced on two edges (cyan) and supports on 26 faces (green). With *Colours (AMS)*, *Result* lists each colour with its filament.
+The demo owl, in 4 colours (one per AMS spool), on the XY plane. The seam is enforced on the back face (cyan) and supports only where they are needed, on 23 faces (green): the brow, the beak and the wing tips hanging over the bed. With *Colours (AMS)*, *Result* lists each colour with its filament.
 
-![The owl in OrcaSlicer](img/laminador-orca.png)
+![The owl in Bambu Studio](img/laminador-bambu.png)
 
-The same 3MF in OrcaSlicer: the part arrives oriented and each face goes to the filament of its colour, with the prime tower. The slicer shows the colours of the loaded filaments, not the Fusion appearances.
+The 3MF in Bambu Studio: each face goes to the filament of its colour, with the prime tower. The slicer shows the colours of the project's filaments, not the Fusion appearances.
 
-![The seam in OrcaSlicer](img/laminador-costura.png)
+![The seam in Bambu Studio](img/laminador-costura.png)
 
-Seen from behind, with OrcaSlicer's seam painting tool: the enforced seam arrives painted on the edge chosen in Fusion. Orca marks it in green, its colour for enforcing.
+Seen from behind, with Bambu Studio's seam painting tool: the back face arrives painted to enforce the seam.
 
-![The supports in OrcaSlicer](img/laminador-soportes.png)
+![The supports in Bambu Studio](img/laminador-soportes.png)
 
-And with the support painting tool: the faces chosen under the wings and the beak arrive painted to enforce supports.
+And with the support painting tool: the brow, the beak and the wing tips arrive painted to enforce supports.
+
+![The owl sliced in Bambu Studio](img/laminador-corte.png)
+
+Sliced with tree (manual) supports and *On build plate only*: the trees grow from the bed, go around the body and reach the brow and the beak. There are no supports outside the painted areas.
 
 | Field | What it does |
 |---|---|
