@@ -6,7 +6,7 @@
   "description": {
     "": "Paints overhangs and bridges like a slicer, maps wall thickness and gaps between surfaces, and sends parts to the slicer with their bed, seam and supports. / Pinta los voladizos y puentes como un laminador, hace un mapa del espesor de pared y del espacio entre superficies, y manda las piezas al laminador con su cama, su costura y sus soportes."
   },
-  "version": "1.2.0",
+  "version": "1.3.0",
   "runOnStartup": true,
   "supportedOS": "windows|mac",
   "editEnabled": true
