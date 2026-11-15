@@ -126,6 +126,14 @@ And with the support painting tool: the brow, the beak and the wing tips arrive 
 
 Sliced with tree (manual) supports and *On build plate only*: the trees grow from the bed, go around the body and reach the brow and the beak. There are no supports outside the painted areas.
 
+![WormGear on three plates in Bambu Studio](img/laminador-placas.png)
+
+Several bodies on one plate: the WormGear demo, with *Colours (AMS)*. Each body colour goes on its own plate, and each part is oriented by its bed and laid out for printing. The preview in the top right corner is the assembly view.
+
+![WormGear in the Bambu Studio assembly view](img/laminador-ensamblaje.png)
+
+In the assembly view, the same parts appear put together as in Fusion: the worm meshes with the wheel and the caps fit on the supports.
+
 | Field | What it does |
 |---|---|
 | Send | *This body*, in its own 3MF, or *Several on one plate*: all those ticked with *Include on the plate*, in a single 3MF |

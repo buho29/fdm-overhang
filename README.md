@@ -126,6 +126,14 @@ Y con la de pintar soportes: la ceja, el pico y las puntas de las alas llegan pi
 
 Laminado con soportes en árbol (manual) y *Solo en la placa*: los árboles salen de la cama, rodean el cuerpo y llegan a la ceja y al pico. Fuera de lo pintado no hay soportes.
 
+![WormGear en tres placas en Bambu Studio](img/laminador-placas.png)
+
+Varios cuerpos en una placa: el WormGear de demostración, con *Colores (AMS)*. Cada color de cuerpo va en su placa, y cada pieza está orientada con su cama y colocada para imprimir. La vista previa de arriba a la derecha es la vista de ensamblaje.
+
+![WormGear en la vista de ensamblaje de Bambu Studio](img/laminador-ensamblaje.png)
+
+En la vista de ensamblaje, las mismas piezas salen montadas como en Fusion: el sinfín engrana con la rueda y las tapas encajan en los soportes.
+
 | Campo | Qué hace |
 |---|---|
 | Enviar | *Este cuerpo*, en su propio 3MF, o *Varios en una placa*: todos los marcados con *Incluir en la placa*, en un solo 3MF |
