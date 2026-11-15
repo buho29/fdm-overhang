@@ -2,3 +2,5 @@
 settings.json
 __pycache__/
 dist/
+# lo escribe VS Code (sus servidores de idioma) en la carpeta abierta
+debug.log
