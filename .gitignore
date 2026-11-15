@@ -4,3 +4,5 @@ __pycache__/
 dist/
 # lo escribe VS Code (sus servidores de idioma) en la carpeta abierta
 debug.log
+# lo escribe Bambu Studio por línea de comandos (spikes de slicer-paint)
+result.json
