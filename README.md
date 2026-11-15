@@ -62,6 +62,7 @@ El soporte de móvil con la escala de 0 a 4 mm y **Ver a través**: la pared cur
 | Medir | *Espesor* o *Espacio* |
 | Cuerpos | *Todos los visibles* o *Elegidos*. Las superficies no se miden. Con *Elegidos*, los espacios solo se miden entre ellos |
 | Espesor mínimo / Espacio mínimo | Lo que no llega se cuenta en el resultado (área y ✖). Por ejemplo 0,8 mm de pared, dos pasadas de una boquilla de 0,4. Cada medida guarda su propio valor |
+| Solo entre cuerpos | Con *Espacio*, solo mide las holguras con otros cuerpos (por defecto). Desmarcada, también las ranuras, los agujeros y los grabados estrechos de cada cuerpo |
 | Pintar | *Mapa de color* o *Solo lo que no llega al mínimo* (en rojo) |
 | Escala desde / hasta | Medidas del rojo y del azul en el mapa de color. Cada medida guarda las suyas |
 | Resolución | Lado máximo de los triángulos con los que se mide: *Rápida (2 mm)*, *Normal (1 mm)* o *Fina (0,5 mm)*. En los cuerpos de malla (un STL) se parten sus triángulos hasta ese tamaño |
@@ -82,11 +83,11 @@ En **Resultado** salen lo más fino (y de qué cuerpo), el área por debajo del 
 
 ### Medir el espacio
 
-Con **Medir: Espacio**, el rayo sale hacia fuera y mide el aire hasta lo que cada cara tiene delante: ranuras y agujeros estrechos del mismo cuerpo, u holguras con otro cuerpo.
+Con **Medir: Espacio**, el rayo sale hacia fuera y mide el aire hasta lo que cada cara tiene delante: holguras con otro cuerpo y, si se desmarca **Solo entre cuerpos**, también ranuras, agujeros y grabados estrechos del mismo cuerpo.
 
 ![Espacios entre superficies](img/espacios.png)
 
-Con **Ver a través** y la escala de 0 a 2 mm: el reborde de la tapa a 0,1 mm de la pared y el eje a 0,15 mm, en rojo anaranjado; la ranura de 0,25 y el pasador de la bisagra a 0,3, en naranja; un tetón metido 0,2 mm en la pared, en magenta; las caras donde la tapa apoya en la caja, en blanco.
+Con **Ver a través**, **Solo entre cuerpos** desmarcada y la escala de 0 a 2 mm: el reborde de la tapa a 0,1 mm de la pared y el eje a 0,15 mm, en rojo anaranjado; la ranura de 0,25 y el pasador de la bisagra a 0,3, en naranja; un tetón metido 0,2 mm en la pared, en magenta; las caras donde la tapa apoya en la caja, en blanco.
 
 ![Espacio entre un sinfín y su rueda](img/sinfin.png)
 

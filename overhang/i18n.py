@@ -76,10 +76,15 @@ EN = {
     'Espesor': 'Thickness',
     'Espacio': 'Gap',
     'Espesor: de cada pared hasta su otra cara. Espacio: de cada cara hasta lo que tiene '
-    'delante, sea del mismo cuerpo o de otro.':
+    'delante, de otro cuerpo o, sin Solo entre cuerpos, también del mismo.':
         'Thickness: from each wall to its other side. Gap: from each face to whatever is in front of it, '
-        'in the same body or in another one.',
+        'in another body or, without Only between bodies, also in the same one.',
     'Espacio mínimo': 'Minimum gap',
+    'Solo entre cuerpos': 'Only between bodies',
+    'Solo mide las holguras con otros cuerpos. Desmarcada, también las ranuras, los '
+    'agujeros y los grabados estrechos de cada cuerpo.':
+        'Only measures the clearances with other bodies. Unticked, also the narrow slots, holes and '
+        'engravings of each body.',
     'El espacio mínimo tiene que ser mayor que 0.': 'The minimum gap must be greater than 0.',
     '%s Lo más estrecho: <b>%s mm</b> (%s)': '%s Narrowest: <b>%s mm</b> (%s)',
     'Por debajo de %s mm: <b>%.0f mm²</b>': 'Below %s mm: <b>%.0f mm²</b>',

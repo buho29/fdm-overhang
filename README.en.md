@@ -62,6 +62,7 @@ The phone stand with the scale from 0 to 4 mm and **See through**: the curved wa
 | Measure | *Thickness* or *Gap* |
 | Bodies | *All visible* or *Selected*. Surfaces are not measured. With *Selected*, gaps are only measured between them |
 | Minimum thickness / Minimum gap | What is below it is counted in the result (area and ✖). For example a 0.8 mm wall, two lines of a 0.4 nozzle. Each measure keeps its own value |
+| Only between bodies | With *Gap*, only measures the clearances with other bodies (default). Unticked, also the narrow slots, holes and engravings of each body |
 | Paint | *Colour map* or *Only what is below the minimum* (in red) |
 | Scale from / to | Values of the red and the blue in the colour map. Each measure keeps its own |
 | Resolution | Maximum side of the triangles used to measure: *Fast (2 mm)*, *Normal (1 mm)* or *Fine (0.5 mm)*. In mesh bodies (an STL) their triangles are split down to that size |
@@ -82,11 +83,11 @@ As in FDM overhangs, nothing is measured until you press **Analyse**. Measuremen
 
 ### Measuring the gap
 
-With **Measure: Gap**, the ray goes outwards and measures the air up to whatever each face has in front of it: narrow slots and holes in the same body, or clearances with another body.
+With **Measure: Gap**, the ray goes outwards and measures the air up to whatever each face has in front of it: clearances with another body and, if **Only between bodies** is unticked, also narrow slots, holes and engravings in the same body.
 
 ![Gaps between surfaces](img/espacios.png)
 
-With **See through** and the scale from 0 to 2 mm: the lid lip 0.1 mm from the wall and the shaft at 0.15 mm, in reddish orange; the 0.25 slot and the hinge pin at 0.3, in orange; a stud going 0.2 mm into the wall, in magenta; the faces where the lid rests on the box, in white.
+With **See through**, **Only between bodies** unticked and the scale from 0 to 2 mm: the lid lip 0.1 mm from the wall and the shaft at 0.15 mm, in reddish orange; the 0.25 slot and the hinge pin at 0.3, in orange; a stud going 0.2 mm into the wall, in magenta; the faces where the lid rests on the box, in white.
 
 ![Gap between a worm and its wheel](img/sinfin.png)
 

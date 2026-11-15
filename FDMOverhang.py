@@ -102,7 +102,7 @@ def _load_settings():
          'quality': 'normal', 'keep': False, 'bridge': True, 'bridge_max': 23.0,
          'th_bodies': 'visible', 'th_res': 'coarse', 'th_paint': 'map', 'th_limit': 0.8, 'th_lo': 0.0,
          'th_hi': 4.0, 'th_keep': False, 'th_mode': 'thickness', 'gap_limit': 0.1, 'gap_lo': 0.0, 'gap_hi': 2.0,
-         'th_xray': True, 'sl_dir': '', 'slicer_paint': '', **_sl_defaults()}
+         'gap_others': True, 'th_xray': True, 'sl_dir': '', 'slicer_paint': '', **_sl_defaults()}
     try:
         with open(SETTINGS, encoding='utf-8') as f:
             s.update(json.load(f))
@@ -508,7 +508,8 @@ def _th_read(inputs):
             'th_xray': inputs.itemById('th_xray').value,
             'gap_limit': round(inputs.itemById('gap_limit').value * 10, 4),
             'gap_lo': round(inputs.itemById('gap_lo').value * 10, 4),
-            'gap_hi': round(inputs.itemById('gap_hi').value * 10, 4)}
+            'gap_hi': round(inputs.itemById('gap_hi').value * 10, 4),
+            'gap_others': inputs.itemById('gap_others').value}
 
 
 class _Busy:
@@ -696,7 +697,8 @@ def _gap_measure(design, bodies, res, cast=None):
     """Lo que tiene delante cada triángulo de cada cuerpo: su propio cuerpo u otro. Cada cuerpo se mira por
     separado para poder distinguir el espacio del contacto y del solape. Se guarda mientras dure el diálogo.
     cast: índices de los cuerpos desde los que se lanzan rayos (None, todos); los demás solo sirven de obstáculo
-    y su resultado es None."""
+    y su resultado es None. El de cada cuerpo es {'all': (espacios, tipos, cuerpo de enfrente), 'others': lo
+    mismo sin contar su propio cuerpo}, para la casilla Solo entre cuerpos."""
     key = _gap_key(bodies, res, cast)
     if key in _gap_cache:
         return _gap_cache[key]
@@ -721,12 +723,14 @@ def _gap_measure(design, bodies, res, cast=None):
         for step, i in enumerate(cast):
             m = meshes[i]
             vals, kinds, who = [], [], []
+            other_vals, other_kinds, other_who = [], [], []
             total = len(m[2]) // 3
             for ray in T.rays(m[0], m[2], outward=True):
                 if len(vals) % BUSY_EVERY == 0:
                     busy.advance(step, len(vals) / total)
                 if not ray:
                     vals.append(T.NO_HIT), kinds.append(T.GAP), who.append(-1)
+                    other_vals.append(T.NO_HIT), other_kinds.append(T.GAP), other_who.append(-1)
                     continue
                 o, d = ray
                 vec = V(*d)
@@ -748,7 +752,9 @@ def _gap_measure(design, bodies, res, cast=None):
                         others.append((kind, dist, j))
                 kind, dist, j = T.combine(own, others)
                 vals.append(dist), kinds.append(kind), who.append(j)
-            results[i] = (vals, kinds, who)
+                kind, dist, j = T.combine(None, others)
+                other_vals.append(dist), other_kinds.append(kind), other_who.append(j)
+            results[i] = {'all': (vals, kinds, who), 'others': (other_vals, other_kinds, other_who)}
     finally:
         _drop_temp(objs)
     busy.drawing()
@@ -771,7 +777,8 @@ def _gap_analyse(design, s, bodies, may_measure=True):
     layers, rows, overlaps = [], [], set()
     thin = contact = overlap = 0.0
     tris = 0
-    for i, (m, (vals, kinds, who)) in enumerate(zip(meshes, results)):
+    for i, (m, r) in enumerate(zip(meshes, results)):
+        vals, kinds, who = r['others' if s['gap_others'] else 'all']
         c, n, idx, _, lift = m
         tc, tn, tcol, st = T.colorize_gaps(c, n, idx, vals, kinds, lo, hi, limit, s['th_paint'] == 'thin', GAP_MARGIN)
         tris += len(idx) // 3
@@ -927,6 +934,7 @@ def _th_update_visibility(inputs):
     inputs.itemById('th_lo').isVisible = is_map and not is_gap
     inputs.itemById('th_hi').isVisible = is_map and not is_gap
     inputs.itemById('gap_limit').isVisible = is_gap
+    inputs.itemById('gap_others').isVisible = is_gap
     inputs.itemById('gap_lo').isVisible = is_map and is_gap
     inputs.itemById('gap_hi').isVisible = is_map and is_gap
 
@@ -953,7 +961,7 @@ class _ThCreatedHandler(adsk.core.CommandCreatedEventHandler):
             for key, label in MODES:
                 dd.listItems.add(tr(label), key == s['th_mode'])
             dd.tooltip = tr('Espesor: de cada pared hasta su otra cara. Espacio: de cada cara hasta lo que tiene '
-                            'delante, sea del mismo cuerpo o de otro.')
+                            'delante, de otro cuerpo o, sin Solo entre cuerpos, también del mismo.')
             dd = inputs.addDropDownCommandInput('th_bodies', tr('Cuerpos'), adsk.core.DropDownStyles.TextListDropDownStyle)
             for key, label in BODIES:
                 dd.listItems.add(tr(label), key == s['th_bodies'])
@@ -963,6 +971,9 @@ class _ThCreatedHandler(adsk.core.CommandCreatedEventHandler):
             sel.setSelectionLimits(0, 0)
             inputs.addValueInput('th_limit', tr('Espesor mínimo'), 'mm', VS('%s mm' % s['th_limit']))
             inputs.addValueInput('gap_limit', tr('Espacio mínimo'), 'mm', VS('%s mm' % s['gap_limit']))
+            others = inputs.addBoolValueInput('gap_others', tr('Solo entre cuerpos'), True, '', bool(s['gap_others']))
+            others.tooltip = tr('Solo mide las holguras con otros cuerpos. Desmarcada, también las ranuras, los '
+                                'agujeros y los grabados estrechos de cada cuerpo.')
             dd = inputs.addDropDownCommandInput('th_paint', tr('Pintar'), adsk.core.DropDownStyles.TextListDropDownStyle)
             for key, label in PAINTS:
                 dd.listItems.add(tr(label), key == s['th_paint'])
