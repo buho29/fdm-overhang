@@ -131,18 +131,19 @@ Sliced with tree (manual) supports and *On build plate only*: the trees grow fro
 | Bed | *XY plane (Z up)*, *XZ plane (Y up)* or *Selected planar face*, chosen in *Face on the bed* |
 | Seam: Enforce on / Block on | Edges or faces where the seam should go, or where it must not. An edge can only enforce the seam if it rises relative to the layers |
 | Supports: Enforce on / Block on | Faces where supports are enforced, or not allowed. Only what faces down once the part is oriented counts |
-| Colours (AMS) | Paints each face with the filament of its colour, from the Fusion appearances. Each different colour goes to a filament: the first body's is 1 and the rest follow in order of appearance, also across the bodies on a plate. The list of colours and filaments is shown in *Result*. In Bambu Studio, the project carries one filament per colour, with its colour: when printing, match each one to an AMS spool. In OrcaSlicer, load each colour in its number |
+| Colours (AMS) | Paints each face with the filament of its colour, from the Fusion appearances. Each different colour goes to a filament: the first body's is 1 and the rest follow in order of appearance, also across the bodies on a plate. The list of colours and filaments is shown in *Result*. The project carries one filament per colour, with its colour: when printing, match each one to an AMS spool. With several bodies of different colours, each body colour goes on its own plate |
 | STL mesh | Maximum distance between the triangles and the surface: from *Low (0.05 mm)* to *Very high (0.003 mm)*. *High* is enough for printing; finer meshes take longer to process and to open |
 | Open in | *OrcaSlicer*, *Bambu Studio* or *Do not open*. The 3MF is prepared for the chosen slicer: each one needs its own |
+| Reset | Asks first, then clears what was chosen on every body of the design (bed, plate, seam and supports), sets the options back to their defaults and opens the dialog again, empty |
 
 While the dialog is open, what you choose is painted over the model: enforced seam in cyan, blocked seam in orange, enforced supports in green and blocked supports in red. The choices for each body are saved in the design and come back when the dialog is opened again, also after closing and reopening the file.
 
 **Send** asks where to save the 3MF. Next to it go each body's STL and part file, the slicer-paint log and, with several bodies, the plate file. Fusion stays free while slicer-paint works. When it finishes, the slicer opens, or a message appears if something fails.
 
 - **It needs [slicer-paint](#slicer-paint-for-send-to-slicer)**, which orients the part, paints the seam and supports and writes the 3MF. Without it, only the STL and the part file are saved, with the command to build the 3MF by hand.
-- **Several bodies:** each one is oriented with its own bed and carries its own choices. They are laid out in rows on the bed; if they don't fit, a warning says to arrange them in the slicer.
+- **Several bodies:** each one is oriented with its own bed and carries its own choices. They are laid out in rows on the bed, looking for the squarest layout; if they don't fit, a warning says to arrange them in the slicer. With *Colours (AMS)*, each body colour gets its own plate.
 - **If you send again to the same 3MF** after saving it in the slicer, its print options are kept: the project (printer, filaments and process), each part's settings, such as its filament, walls or support type, and the plate's. Geometry, orientation, position and painting are generated again.
-- **Bambu Studio:** the 3MF carries a complete P1S project with 5 filaments, because Bambu Studio drops each part's settings if the project is not complete. For another printer, save it once from Bambu Studio with yours: later sends keep it.
+- **Project:** the 3MF carries a complete P1S project with 5 filaments, Bambu Studio's or OrcaSlicer's depending on the slicer. Bambu Studio drops each part's settings if the project is not complete, and OrcaSlicer without a project puts every part on one plate. When opened, those presets are used, not the ones you have selected. For another printer, save it once from the slicer with yours: later sends keep it.
 - Bodies inside moved or rotated occurrences are exported in place, and the STL is checked against the body before slicer-paint runs.
 
 The slicer-paint details, such as its options and the part file format, are in [slicer-paint/README.md](slicer-paint/README.md) (in Spanish).
@@ -171,6 +172,7 @@ m.send_status()
 | `edges_where(body, …)` | Edges by direction (`along='up'`), curve type, box, length, faces or role |
 | `describe(entities)` | Type, area or length, position, normal, color and roles of each one |
 | `show(body)` / `hide()` | Paints the marks outside the dialog, or removes them |
+| `reset()` | Like *Reset*: clears the marks on every body and sets the options back to their defaults |
 | `analyze(body, angle)` | The Overhangs dialog numbers for that body and its bed |
 | `send(bodies, target, mesh, open_in, color)` | Exports and runs slicer-paint without asking: one body, a list (plate) or `None` (the bodies marked for the plate). Returns at once; `send_status()` tells when it is done |
 

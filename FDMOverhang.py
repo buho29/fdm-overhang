@@ -48,6 +48,7 @@ SL_CMD_ID = 'buhoFdmSlicer'
 SL_GROUP_ID = 'fdm_slicer'
 SL_DONE_EVENT = 'buhoFdmSlicerDone'
 SL_SHOW_EVENT = 'buhoFdmSlicerShow'
+SL_RESET_EVENT = 'buhoFdmSlicerReset'   # Restablecer: cierra el diálogo, borra y lo vuelve a abrir
 API_GROUP_ID = 'fdm_slicer_api'   # capa con lo marcado desde la API sin diálogo (show), fuera de cualquier comando
 API_SEND_EVENT = 'buhoFdmApiSend'  # send() de la API exporta desde aquí: execute_code corta a los 30 s
 SETTINGS = os.path.join(HERE, 'settings.json')
@@ -90,14 +91,18 @@ def _default_bed():
     return 'z' if z_up else 'y'
 
 
+def _sl_defaults():
+    """Las opciones del diálogo Enviar al laminador por defecto; las que vuelven con Restablecer."""
+    return {'sl_what': 'one', 'sl_body': None, 'sl_bed': _default_bed(), 'sl_mesh': 'high', 'sl_open': 'orca',
+            'sl_color': False}
+
+
 def _load_settings():
     s = {'bodies': 'visible', 'bed': _default_bed(), 'own_bed': False, 'angle': 45, 'gradient': True,
          'quality': 'normal', 'keep': False, 'bridge': True, 'bridge_max': 23.0,
          'th_bodies': 'visible', 'th_res': 'coarse', 'th_paint': 'map', 'th_limit': 0.8, 'th_lo': 0.0,
          'th_hi': 4.0, 'th_keep': False, 'th_mode': 'thickness', 'gap_limit': 0.1, 'gap_lo': 0.0, 'gap_hi': 2.0,
-         'th_xray': True, 'sl_bed': _default_bed(),
-         'sl_open': 'orca', 'sl_dir': '', 'slicer_paint': '', 'sl_what': 'one', 'sl_mesh': 'high',
-         'sl_color': False}
+         'th_xray': True, 'sl_dir': '', 'slicer_paint': '', **_sl_defaults()}
     try:
         with open(SETTINGS, encoding='utf-8') as f:
             s.update(json.load(f))
@@ -1759,6 +1764,11 @@ class _SlCreatedHandler(adsk.core.CommandCreatedEventHandler):
             dd = inputs.addDropDownCommandInput('sl_open', tr('Abrir en'), adsk.core.DropDownStyles.TextListDropDownStyle)
             for key, label in OPEN_IN:
                 dd.listItems.add(tr(label), key == s['sl_open'])
+            btn = inputs.addBoolValueInput('sl_reset', '', False, '', False)
+            btn.text = tr('Restablecer')
+            btn.isFullWidth = True
+            btn.tooltip = tr('Borra lo elegido en todos los cuerpos de este diseño (cama, placa, costura y soportes) y '
+                             'vuelve las opciones a sus valores por defecto.')
             inputs.addTextBoxCommandInput('sl_info', tr('Resultado'), '', 9, True).isFullWidth = True
             current = _sl_state['current']
             if current is not None:
@@ -1808,6 +1818,9 @@ class _SlChangedHandler(adsk.core.InputChangedEventHandler):
         if _sl_state.get('loading'):
             return
         inputs = args.firingEvent.sender.commandInputs
+        if args.input.id == 'sl_reset':
+            _sl_ask_reset()
+            return
         try:
             if args.input.id == 'sl_body':
                 # lo del cuerpo anterior sigue en los campos: se aparta y se ponen los del nuevo
@@ -1827,6 +1840,54 @@ class _SlChangedHandler(adsk.core.InputChangedEventHandler):
         _sl_update_visibility(inputs)
         if args.input.id == 'sl_bed' and _choice(inputs, 'sl_bed', BEDS) == 'face':
             inputs.itemById('sl_face').hasFocus = True
+
+
+def _sl_ask_reset():
+    """Pide confirmación y restablece desde un evento aparte: con el diálogo abierto, lo que se borra del diseño
+    Fusion lo repone al cerrarlo."""
+    answer = _ui.messageBox(
+        tr('¿Borrar lo elegido en todos los cuerpos de este diseño (cama, placa, costura y soportes) y volver las '
+           'opciones a sus valores por defecto?\n\nEl diálogo se cierra y se vuelve a abrir vacío.'),
+        tr('Restablecer'), adsk.core.MessageBoxButtonTypes.YesNoButtonType,
+        adsk.core.MessageBoxIconTypes.QuestionIconType)
+    if answer == adsk.core.DialogResults.DialogYes:
+        import threading
+        _sl_state['resets'] = 0
+        threading.Timer(0.1, lambda: _app.fireCustomEvent(SL_RESET_EVENT)).start()
+
+
+def _sl_reset(design):
+    """Borra del diseño lo elegido para Enviar al laminador y vuelve las opciones a sus valores por defecto.
+    Devuelve cuántas marcas ha borrado."""
+    gone = 0
+    for name in (ATTR_ROLE, ATTR_BODY):
+        for a in list(design.findAttributes(ATTR_GROUP, name)):
+            if a.isValid:
+                a.deleteMe()
+                gone += 1
+    _save_settings(_sl_defaults())
+    return gone
+
+
+class _SlResetHandler(adsk.core.CustomEventHandler):
+    """Cierra el diálogo, restablece (_sl_reset) y lo vuelve a abrir."""
+    def notify(self, args):
+        try:
+            if _ui.activeCommand == SL_CMD_ID:
+                _ui.terminateActiveCommand()
+            if _ui.activeCommand == SL_CMD_ID:   # aún se está cerrando: otra vez en un momento
+                _sl_state['resets'] = _sl_state.get('resets', 0) + 1
+                if _sl_state['resets'] < 20:
+                    import threading
+                    threading.Timer(0.2, lambda: _app.fireCustomEvent(SL_RESET_EVENT)).start()
+                return
+            design = adsk.fusion.Design.cast(_app.activeProduct)
+            if design:
+                _sl_reset(design)
+                _api_refresh()
+            _ui.commandDefinitions.itemById(SL_CMD_ID).execute()
+        except Exception:
+            _ui.messageBox(tr('Enviar al laminador: error') + '\n' + traceback.format_exc())
 
 
 class _SlPreSelectHandler(adsk.core.SelectionEventHandler):
@@ -2375,6 +2436,14 @@ class _ApiSendHandler(adsk.core.CustomEventHandler):
             _sl_state['done'] = {'running': False, 'ok': False, 'message': traceback.format_exc()}
 
 
+def reset():
+    """Como el botón Restablecer del diálogo: borra lo elegido en todos los cuerpos del diseño (cama, placa, costura y
+    soportes) y vuelve las opciones del diálogo a sus valores por defecto. Devuelve cuántas marcas ha borrado."""
+    gone = _sl_reset(_api_writable())
+    _api_refresh()
+    return gone
+
+
 def send_status():
     """Cómo va el último envío: {'running': True, 'stage': 'export'} mientras Fusion exporta, {'running': True, …}
     mientras slicer-paint trabaja; al acabar, 'ok', 'out', 'message' (si no se lanzó slicer-paint) o 'code' y, si
@@ -2457,7 +2526,7 @@ def run(context):
         sl_def.commandCreated.add(h)
         _handlers.append(h)
         for ev_id, h in ((SL_DONE_EVENT, _SlDoneHandler()), (SL_SHOW_EVENT, _SlShowHandler()),
-                         (API_SEND_EVENT, _ApiSendHandler())):
+                         (SL_RESET_EVENT, _SlResetHandler()), (API_SEND_EVENT, _ApiSendHandler())):
             _app.unregisterCustomEvent(ev_id)
             _app.registerCustomEvent(ev_id).add(h)
             _handlers.append(h)
@@ -2485,6 +2554,7 @@ def stop(context):
         _clear(API_GROUP_ID)
         _app.unregisterCustomEvent(SL_DONE_EVENT)
         _app.unregisterCustomEvent(SL_SHOW_EVENT)
+        _app.unregisterCustomEvent(SL_RESET_EVENT)
         _app.unregisterCustomEvent(API_SEND_EVENT)
         for pid in PANEL_IDS:
             panel = _panel(pid)

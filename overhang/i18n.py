@@ -208,6 +208,15 @@ EN = {
     'placa': 'plate',
     'Guardados la placa %s y sus piezas.\n\nSin slicer-paint. Para generar el 3MF, ejecútalo a mano:\n%s':
         'Saved the plate %s and its parts.\n\nNo slicer-paint. To build the 3MF, run it by hand:\n%s',
+    'Restablecer': 'Reset',
+    'Borra lo elegido en todos los cuerpos de este diseño (cama, placa, costura y soportes) y vuelve las opciones a '
+    'sus valores por defecto.':
+        'Clears what was chosen on every body of this design (bed, plate, seam and supports) and sets the options '
+        'back to their defaults.',
+    '¿Borrar lo elegido en todos los cuerpos de este diseño (cama, placa, costura y soportes) y volver las opciones '
+    'a sus valores por defecto?\n\nEl diálogo se cierra y se vuelve a abrir vacío.':
+        'Clear what was chosen on every body of this design (bed, plate, seam and supports) and set the options back '
+        'to their defaults?\n\nThe dialog closes and opens again empty.',
     # ------------------------------------------------ colores
     'Colores (AMS)': 'Colours (AMS)',
     'Pinta cada cara con el filamento de su color, según los aspectos de Fusion. Cada color distinto va a un '

@@ -131,18 +131,19 @@ Laminado con soportes en árbol (manual) y *Solo en la placa*: los árboles sale
 | Cama | *Plano XY (Z arriba)*, *Plano XZ (Y arriba)* o *Cara plana elegida*, que se elige en *Cara sobre la cama* |
 | Costura: Forzar en / Prohibir en | Aristas o caras donde poner la costura, o donde no puede ir. Una arista solo vale para forzarla si sube respecto a las capas |
 | Soportes: Forzar en / Bloquear en | Caras donde forzar soportes, o donde no puede haberlos. Solo cuenta lo que mira hacia abajo con la pieza ya orientada |
-| Colores (AMS) | Pinta cada cara con el filamento de su color, según los aspectos de Fusion. Cada color distinto va a un filamento: el del primer cuerpo es el 1 y los demás, por orden de aparición, también entre los cuerpos de una placa. La lista de colores y filamentos sale en *Resultado*. En Bambu Studio, el proyecto lleva un filamento por color, con su color: al imprimir, empareja cada uno con una bobina del AMS. En OrcaSlicer, carga cada color en su número |
+| Colores (AMS) | Pinta cada cara con el filamento de su color, según los aspectos de Fusion. Cada color distinto va a un filamento: el del primer cuerpo es el 1 y los demás, por orden de aparición, también entre los cuerpos de una placa. La lista de colores y filamentos sale en *Resultado*. El proyecto lleva un filamento por color, con su color: al imprimir, empareja cada uno con una bobina del AMS. Con varios cuerpos de distinto color, cada color de cuerpo va en su placa |
 | Malla del STL | Separación máxima entre los triángulos y la superficie: de *Baja (0,05 mm)* a *Muy alta (0,003 mm)*. *Alta* basta para imprimir; con más, la pieza tarda más en procesarse y en abrirse |
 | Abrir en | *OrcaSlicer*, *Bambu Studio* o *No abrir*. El 3MF se prepara para el laminador elegido: cada uno necesita el suyo |
+| Restablecer | Pregunta antes y borra lo elegido en todos los cuerpos del diseño (cama, placa, costura y soportes), vuelve las opciones a sus valores por defecto y abre el diálogo de nuevo, vacío |
 
 Mientras el diálogo está abierto, lo elegido se pinta encima del modelo: costura forzada en cian, prohibida en naranja, soportes forzados en verde y bloqueados en rojo. Lo elegido para cada cuerpo se guarda en el diseño y vuelve al abrir el diálogo, también después de cerrar y abrir el archivo.
 
 Al pulsar **Enviar** se elige dónde guardar el 3MF. Al lado quedan el STL y el archivo de pieza de cada cuerpo, el log de slicer-paint y, con varios cuerpos, el archivo de placa. Mientras slicer-paint trabaja, Fusion sigue libre. Al acabar, se abre el laminador, o un aviso si algo falla.
 
 - **Necesita [slicer-paint](#slicer-paint-para-enviar-al-laminador)**, que orienta la pieza, pinta la costura y los soportes y escribe el 3MF. Sin él, solo se guardan el STL y el archivo de pieza, con la orden para generar el 3MF a mano.
-- **Varios cuerpos:** cada uno se orienta con su propia cama y lleva lo suyo. Se colocan en filas sobre la cama, y si no caben, se avisa para ordenarlos en el laminador.
+- **Varios cuerpos:** cada uno se orienta con su propia cama y lleva lo suyo. Se colocan en filas sobre la cama, buscando el conjunto más cuadrado, y si no caben, se avisa para ordenarlos en el laminador. Con *Colores (AMS)*, va una placa por color de cuerpo.
 - **Si vuelves a enviar al mismo 3MF** después de guardarlo en el laminador, se conservan sus opciones de impresión: el proyecto (impresora, filamentos y proceso), los ajustes de cada pieza, como su filamento, sus paredes o el tipo de soporte, y los de la placa. La geometría, la orientación, la posición y la pintura salen de nuevo.
-- **Bambu Studio:** el 3MF lleva un proyecto completo de la P1S con 5 filamentos, porque Bambu Studio borra los ajustes de cada pieza si el proyecto no está completo. Para otra impresora, guárdalo una vez desde Bambu Studio con la tuya: los siguientes envíos la conservan.
+- **Proyecto:** el 3MF lleva un proyecto completo de la P1S con 5 filamentos, el de Bambu Studio o el de OrcaSlicer según el laminador. Bambu Studio borra los ajustes de cada pieza si el proyecto no está completo, y OrcaSlicer sin proyecto junta todas las piezas en una placa. Al abrirlo se usan esos presets, no los que tengas elegidos. Para otra impresora, guárdalo una vez desde el laminador con la tuya: los siguientes envíos la conservan.
 - Los cuerpos dentro de ocurrencias movidas o giradas se exportan en su sitio, y se comprueba que el STL coincide con el cuerpo antes de lanzar slicer-paint.
 
 Los detalles de slicer-paint, como sus opciones y el formato del archivo de pieza, están en [slicer-paint/README.md](slicer-paint/README.md).
@@ -171,6 +172,7 @@ m.send_status()
 | `edges_where(body, …)` | Aristas por dirección (`along='up'`), tipo de curva, caja, longitud, caras o papel |
 | `describe(entities)` | Tipo, área o longitud, posición, normal, color y papeles de cada una |
 | `show(body)` / `hide()` | Pinta lo marcado fuera del diálogo, o lo quita |
+| `reset()` | Como *Restablecer*: borra lo marcado en todos los cuerpos y vuelve las opciones a sus valores por defecto |
 | `analyze(body, angle)` | Los números del diálogo de Voladizos para ese cuerpo y su cama |
 | `send(bodies, target, mesh, open_in, color)` | Exporta y lanza slicer-paint sin preguntar: un cuerpo, una lista (placa) o `None` (los marcados para la placa). Vuelve enseguida; `send_status()` dice cuándo acaba |
 
