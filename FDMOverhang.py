@@ -1385,6 +1385,7 @@ def _sl_collect(body, cfg, pal=None, send=False):
     if isinstance(bed, str):
         return None, bed, [], []
     layers, lines, roles, rows = [], [], {}, []
+    lift = None   # pedir la malla de pantalla cuesta unos 40 ms: una vez por cuerpo, no por cara
     sq = '<font color="#%02x%02x%02x">■</font> %s'
     for key, kind, role, rgb, label in SL_ROLES:
         edges, faces = [], []
@@ -1397,7 +1398,9 @@ def _sl_collect(body, cfg, pal=None, send=False):
             if face:
                 data, (c, n, idx) = _sl_face(face, body)
                 faces.append(data)
-                layers.append(_soup(c, n, idx, rgb, A.lift(FACE_TOL, _display_tolerance(body.nativeObject or body))))
+                if lift is None:
+                    lift = A.lift(FACE_TOL, _display_tolerance(body.nativeObject or body))
+                layers.append(_soup(c, n, idx, rgb, lift))
                 # el resaltado de Fusion tapa la cara elegida, pero no las líneas: el contorno lleva el color
                 lines += [(_sl_edge(e, body), rgb) for e in face.edges]
             elif edge:
@@ -1802,12 +1805,17 @@ class _SlShowHandler(adsk.core.CustomEventHandler):
             cfg = _sl_state.get('cfgs', {}).get(current)
             if cmd and cmd.isValid and cfg:
                 _sl_cfg_show(cmd.commandInputs, cfg)
+                cmd.doExecutePreview()   # las vistas previas de cada selección se saltan (_SlPreviewHandler)
         except Exception:
             _ui.messageBox(tr('Enviar al laminador: error') + '\n' + traceback.format_exc())
 
 
 class _SlPreviewHandler(adsk.core.CommandEventHandler):
     def notify(self, args):
+        # Al rellenar los campos, Fusion pide una vista previa por cada addSelection y en el momento: con las 68
+        # caras de la base eran 69 vistas previas, cada una más lenta (dos minutos). Se pinta una vez al acabar.
+        if _sl_state.get('loading'):
+            return
         _sl_draw(args.command.commandInputs)
 
 
