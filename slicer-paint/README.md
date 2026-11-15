@@ -49,9 +49,9 @@ Si el 3MF de salida ya existe y lo guardaste desde el laminador, se conservan su
 
 - **El proyecto:** impresora, filamentos y proceso, con cualquier cambio que hicieras.
 - **Cada objeto, por su nombre:** el filamento que le asignaste y sus ajustes propios, como las paredes o el relleno. Si la pieza tiene pintura de soportes, `enable_support` siempre queda activado. El tipo de soporte (normal o árbol, manual o automático) es el que guardaste, salvo que pidas otro con `--support-style` o `--support-mode`.
-- **La placa:** su nombre y los ajustes que cambiaste solo para ella.
+- **Cada placa:** su nombre y los ajustes que cambiaste solo para ella.
 
-La geometría, la orientación, la colocación en la cama y la pintura salen de nuevo. Los modificadores, las piezas añadidas en el laminador y las placas que no sean la primera se pierden.
+La geometría, la orientación, la colocación en la cama y la pintura salen de nuevo. Los modificadores y las piezas añadidas en el laminador se pierden, y cada pieza vuelve a la placa que le toca.
 
 Solo se conservan las opciones del laminador de destino. Orca escribe al guardar la misma metadata `Application` que Bambu Studio y además una metadata `OrcaSlicer`, y por esa se distinguen. Si el archivo se guardó con el otro laminador, avisa y empieza de cero. `--project-settings` gana al proyecto guardado, y `--fresh` no conserva nada.
 
@@ -67,7 +67,8 @@ El archivo de placa enumera las piezas: el STL de cada una, su archivo de pieza 
 - Las opciones generales valen para todas: `--overhang-limit`, `--support-overhang`, `--support-mode`, `--support-style`, `--seam-radius`, `--paint-resolution`, `--target`, `--project-settings`, `--fresh` y `--open`.
 - `--orient`, `--part`, `--fusion`, `--seam`, `--seam-block`, `--support-enforce` y `--support-block` son de una sola pieza y dan error con `--plate`. Lo que hacen va en el archivo de pieza de cada una.
 - Cada pieza es un objeto con sus propios ajustes: `enable_support` solo va en las que tienen pintura de soportes.
-- Las piezas se colocan en filas sobre la cama de la P1S, con 5 mm entre ellas, y el conjunto se centra. Si no caben, el archivo se escribe igual y avisa: hay que ordenarlas en el laminador.
+- Las piezas se colocan en filas sobre la cama de la P1S, con 5 mm entre ellas: de más a menos fondo y con el ancho de fila que deja el conjunto más cuadrado. El conjunto se centra. Si no caben, el archivo se escribe igual y avisa: hay que ordenarlas en el laminador.
+- **Una placa por color:** si las piezas llevan colores (archivo de pieza con `color`) y hay más de un filamento de cuerpo, cada filamento de cuerpo va en su placa, que se llama «Filamento N #RRGGBB». La pintura de color se conserva.
 - Los avisos y errores dicen de qué pieza son. Si una pieza falla, no se escribe nada y sale con código 2.
 
 Las cajas usan las coordenadas de la pieza ya orientada, con Z mínima 0 y sin el centrado en la cama. Si una caja empieza por un número negativo, escríbela con `=`: `--support-block=-60,0,-1,0,50,60`.
@@ -100,9 +101,11 @@ Cada slicer necesita su variante, y un archivo no sirve para el otro:
 
 | | Destino `orca` | Destino `bambu` |
 | --- | --- | --- |
-| Ajustes de proyecto | No lleva, salvo los que guardó Orca | Proyecto P1S completo, o el que guardó Bambu |
-| Metadata `Application` | No lleva; con ella sola, Orca rechaza el archivo. Con los ajustes que guardó Orca, va la suya y `OrcaSlicer` | `BambuStudio-<versión de los ajustes>` |
-| Presets al abrir | Los que tengas seleccionados | Los del proyecto, con 5 filamentos y 0,20 mm. Con colores, un filamento por color, con su color |
+| Ajustes de proyecto | Proyecto P1S de Orca, o el que guardó Orca | Proyecto P1S de Bambu, o el que guardó Bambu |
+| Metadata | `Application` y `OrcaSlicer`, las que escribe Orca al guardar. Con `Application` sola, Orca rechaza el archivo | `Application`: `BambuStudio-<versión de los ajustes>` |
+| Presets al abrir | Los del proyecto: P1S 0,4, 0,20 mm y 5 filamentos de PLA, de los perfiles de Orca | Los del proyecto, con 5 filamentos y 0,20 mm |
+
+En los dos, con colores, el proyecto lleva un filamento por color, con su color, y una placa por filamento de cuerpo. Para otra impresora, guarda el 3MF una vez desde el laminador con la tuya: los siguientes envíos la conservan.
 
 Sin proyecto completo, Bambu Studio carga solo la geometría y la pintura, y borra `enable_support` y `support_type`. Entonces hay que activar los soportes a mano.
 
@@ -110,7 +113,6 @@ Sin proyecto completo, Bambu Studio carga solo la geometría y la pintura, y bor
 
 - Las reglas por ángulo y `--seam back` pintan triángulos enteros, porque el límite ya es la cara. Solo las cajas y las aristas recortan.
 - Un triángulo enorme limita la precisión de una caja: se divide hasta 8 niveles, y eso deja unos 0,4 mm en una arista de 100 mm.
-- Una sola placa por archivo.
 - La colocación en filas no gira las piezas ni las encaja: si así no caben, hay que usar *Organizar* en el laminador.
 - `--seam back` pinta todas las paredes orientadas a +Y, no solo la exterior.
 
@@ -125,6 +127,7 @@ Sin proyecto completo, Bambu Studio carga solo la geometría y la pintura, y bor
 .venv\Scripts\python.exe spikes\verify_arista.py prisma.stl bambu orca_nightly orca_243 --edges a.json b.json c.json
 .venv\Scripts\python.exe spikes\verify_caras.py sinfin.stl bambu orca_nightly orca_243 --block caras.json
 .venv\Scripts\python.exe spikes\verify_placa.py bambu orca_nightly orca_243
+.venv\Scripts\python.exe spikes\verify_placas.py bambu orca_nightly orca_243
 ```
 
-Los scripts de `spikes/` usan los slicers instalados y las rutas de este PC. Por línea de comandos, Orca recoloca las piezas de un 3MF que no es un proyecto de Bambu, y `verify_placa.py` le pasa `--arrange 0`. La interfaz las deja donde están.
+Los scripts de `spikes/` usan los slicers instalados y las rutas de este PC. La plantilla de Orca sale de `spikes\make_orca_template.py orca_243`, que carga una caja en Orca por línea de comandos con los perfiles de sistema de la P1S y guarda los ajustes del proyecto.

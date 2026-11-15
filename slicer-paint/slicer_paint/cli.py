@@ -283,6 +283,26 @@ def filament_colours(parts: list[PreparedPart]) -> list[str | None]:
     return [known.get(n) for n in range(1, max(known, default=0) + 1)]
 
 
+def body_filament(part: PreparedPart) -> int:
+    return part.color_plan.body_filament if part.color_plan is not None else 1
+
+
+def plate_groups(parts: list[PreparedPart]) -> list[tuple[int, list[int]]]:
+    """Piezas de cada placa: [(filamento, índices)]. Con colores y más de un filamento de cuerpo,
+    una placa por filamento de cuerpo, en orden de filamento; si no, todas en una."""
+    filaments = sorted({body_filament(p) for p in parts})
+    if len(filaments) < 2 or all(p.color_plan is None for p in parts):
+        return [(filaments[0], list(range(len(parts))))]
+    return [(f, [i for i, p in enumerate(parts) if body_filament(p) == f]) for f in filaments]
+
+
+def plate_name(parts: list[PreparedPart], filament: int) -> str:
+    """Nombre de la placa de un filamento, con su color si se sabe."""
+    colours = filament_colours(parts)
+    rgb = colours[filament - 1] if filament <= len(colours) else None
+    return f"Filamento {filament}{f' {rgb}' if rgb else ''}"
+
+
 def color_summary(part: PreparedPart) -> str:
     """Qué filamento lleva cada color, para cargar los carretes en ese orden."""
     plan = part.color_plan
@@ -309,12 +329,18 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"Aviso: {warning}", file=sys.stderr)
         output = Path(args.output)
         previous = kept_settings(args, output, target)
+        metadata = None
         if args.project_settings:
             project_settings = project.load_project_settings(args.project_settings)
         elif previous:
-            project_settings = previous.project_settings
+            project_settings, metadata = previous.project_settings, previous.metadata
+        elif target == "bambu":
+            project_settings = project.load_project_settings()
         else:
-            project_settings = project.load_project_settings() if target == "bambu" else None
+            # Orca solo usa los ajustes de proyecto (y lee las placas) si llevan su metadata.
+            project_settings, orca_version = project.load_orca_template()
+            metadata = [("Application", project.application_version(project_settings)),
+                        ("OrcaSlicer", orca_version)]
         colours = filament_colours(parts)
         if project_settings is not None and colours:
             project_settings = project.with_filament_colours(project_settings, colours)
@@ -322,32 +348,47 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Error: {exc}", file=sys.stderr)
         return 2
 
-    centers, fits = plate.arrange([tuple(p.oriented.extents[:2]) for p in parts])
+    groups = plate_groups(parts)
+    placed: dict[int, tuple[int, tuple[float, float]]] = {}
+    crowded = []
+    for number, (filament, members) in enumerate(groups, 1):
+        centers, fits = plate.arrange([tuple(parts[i].oriented.extents[:2]) for i in members])
+        placed.update({i: (number, center) for i, center in zip(members, centers)})
+        if not fits:
+            crowded.append(number)
+    names = [plate_name(parts, filament) if len(groups) > 1 else "" for filament, _ in groups]
+    kept_plates = previous.plates if previous else []
+    plate_settings = [{"plater_name": name, **(kept_plates[n] if n < len(kept_plates) else {})}
+                      for n, name in enumerate(names)]
+    for values, name in zip(plate_settings, names):
+        if not values.get("plater_name"):
+            values["plater_name"] = name
     output.parent.mkdir(parents=True, exist_ok=True)
     kept_objects = previous.objects if previous else {}
     write_plate(output, [PlateObject(p.oriented.vertices, p.oriented.faces, p.support, p.seam,
                                      p.name, part_settings(args, p, kept_objects.get(p.name)),
-                                     center, p.color)
-                         for p, center in zip(parts, centers)], project_settings,
-                metadata=previous.metadata if previous and not args.project_settings else None,
-                plate_settings=previous.plate if previous else None)
+                                     placed[i][1], p.color, placed[i][0])
+                         for i, p in enumerate(parts)], project_settings,
+                metadata=metadata,
+                plate_settings=plate_settings)
 
     for number, part in enumerate(parts, 1):
         if args.plate:
             print(f"Pieza {number}: {part.name}")
         print_summary(args, part)
-    if not fits:
+    if len(groups) > 1:
+        for number, ((_, members), name) in enumerate(zip(groups, names), 1):
+            print(f"Placa {number} ({name[:1].lower() + name[1:]}): {', '.join(parts[i].name for i in members)}")
+    for number in crowded:
         width, depth = plate.P1S_BED_SIZE
         what = "Las piezas no caben" if len(parts) > 1 else "La pieza no cabe"
-        print(f"Aviso: {what} en la cama de {width:.0f} × {depth:.0f} mm; ordénalas en el laminador",
+        where = f" de la placa {number}" if len(groups) > 1 else ""
+        print(f"Aviso: {what} en la cama{where} de {width:.0f} × {depth:.0f} mm; ordénalas en el laminador",
               file=sys.stderr)
     print(f"Escrito: {output} (para {target}{f', {len(parts)} piezas' if args.plate else ''})")
-    if len(colours) > 1 and project_settings is not None:
+    if len(colours) > 1:
         print(f"El proyecto lleva {len(colours)} filamentos con los colores de Fusion: al imprimir, "
               "empareja cada uno con una bobina del AMS")
-    elif len(colours) > 1:
-        print(f"Aviso: el laminador tiene que tener al menos {len(colours)} filamentos, cada color en "
-              "el número que dice «Colores»", file=sys.stderr)
     if args.open:
         try:
             subprocess.Popen([find_slicer(args.open), str(output.resolve())])

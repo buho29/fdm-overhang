@@ -1,4 +1,4 @@
-"""Ajustes de proyecto para los archivos destinados a Bambu Studio.
+"""Ajustes de proyecto de los 3MF, para Bambu Studio y para Orca.
 
 Bambu Studio 02.08.02.60 considera inválido un 3MF sin `nozzle_diameter` ni un `printer_model`
 de Bambu, y entonces carga solo la geometría y borra los ajustes por objeto, como
@@ -8,7 +8,9 @@ y al abrir el archivo se usan sus presets en lugar de los seleccionados.
 
 Orca, en cambio, rechaza estos ajustes y la metadata Application, por eso hay dos destinos.
 Sí acepta los suyos: al guardar, escribe la misma Application que Bambu Studio y además una
-metadata OrcaSlicer.
+metadata OrcaSlicer. Con destino Orca va la plantilla ORCA_TEMPLATE, guardada por Orca con los
+perfiles de la P1S, y esas dos metadatas: así Orca usa el proyecto y lee las placas, que sin
+proyecto junta en la primera.
 
 Al reescribir un 3MF que el laminador ya guardó, read_previous recoge sus opciones de
 impresión (proyecto, ajustes de cada objeto y de la placa) para conservarlas.
@@ -27,6 +29,9 @@ from pathlib import Path
 PROJECT_FILE = "Metadata/project_settings.config"
 # Proyecto P1S guardado por Bambu Studio 02.08.02.60, con 5 filamentos (PLA y PC).
 DEFAULT_TEMPLATE = Path(__file__).resolve().parent / "templates" / "bambu_p1s_project_settings.config"
+# Proyecto P1S de Orca con 5 filamentos de PLA, de sus perfiles de sistema (spikes/make_orca_template.py).
+# Lleva aparte, en «orca_version», la versión de Orca que lo guardó.
+ORCA_TEMPLATE = Path(__file__).resolve().parent / "templates" / "orca_p1s_project_settings.config"
 
 
 def load_project_settings(path: str | Path | None = None) -> bytes:
@@ -49,14 +54,14 @@ class Previous:
 
     slicer es "orca" u "bambu". Orca escribe la misma metadata Application que Bambu Studio
     y además una metadata OrcaSlicer, que es lo que los distingue. metadata son esas dos, tal
-    cual. objects va por nombre de objeto, sin el nombre; plate lleva los ajustes de la
-    primera placa, sin su número ni sus miniaturas.
+    cual. objects va por nombre de objeto, sin el nombre; plates lleva los ajustes de cada
+    placa, en orden, sin su número ni sus miniaturas.
     """
     slicer: str
     metadata: list[tuple[str, str]]
     project_settings: bytes
     objects: dict[str, dict[str, str]] = field(default_factory=dict)
-    plate: dict[str, str] = field(default_factory=dict)
+    plates: list[dict[str, str]] = field(default_factory=list)
 
 
 # Metadata del 3dmodel.model que identifica al laminador que guardó los ajustes.
@@ -93,28 +98,45 @@ def read_previous(path: str | Path) -> Previous | None:
             found.setdefault(m.get("name"), m.text or "")
     metadata = list(found.items())
     objects: dict[str, dict[str, str]] = {}
-    plate: dict[str, str] = {}
+    plates: list[tuple[int, dict[str, str]]] = []
     if config is not None:
         for obj in config.findall("object"):
             values = _keyed(obj)
             name = values.pop("name", None)
             if name is not None:
                 objects.setdefault(name, values)
-        first = config.find("plate")
-        if first is not None:
-            plate = {k: v for k, v in _keyed(first).items()
-                     if k != "plater_id" and not k.endswith("_file")}
+        for number, element in enumerate(config.findall("plate"), 1):
+            values = _keyed(element)
+            try:
+                number = int(values.get("plater_id", number))
+            except ValueError:
+                pass
+            plates.append((number, {k: v for k, v in values.items()
+                                    if k != "plater_id" and not k.endswith("_file")}))
     slicer = "orca" if any(name == "OrcaSlicer" for name, _ in metadata) else "bambu"
-    return Previous(slicer, metadata, settings, objects, plate)
+    return Previous(slicer, metadata, settings, objects, [values for _, values in sorted(plates, key=lambda p: p[0])])
+
+
+def load_orca_template() -> tuple[bytes, str]:
+    """Los ajustes de la plantilla de Orca y la versión de Orca que los guardó."""
+    settings = json.loads(ORCA_TEMPLATE.read_bytes())
+    version = settings.pop("orca_version")
+    return json.dumps(settings, indent=4, ensure_ascii=False).encode("utf-8"), version
 
 
 def _per_filament_keys() -> dict[str, int]:
     """Claves de los ajustes que llevan valores por filamento, con cuántos lleva cada uno. Salen
-    de la plantilla, que tiene 5 filamentos: con 5, 10 o 20 valores son 1, 2 o 4 por filamento."""
-    template = json.loads(DEFAULT_TEMPLATE.read_bytes())
-    count = len(template["filament_colour"])
-    return {key: len(value) // count for key, value in template.items()
-            if isinstance(value, list) and len(value) in (count, 2 * count, 4 * count)}
+    de las plantillas, que tienen 5 filamentos: con 5, 10 o 20 valores son 1, 2 o 4 por filamento.
+    En la de Orca solo cuentan las de 5 y las que empiezan por filament_, porque tiene listas de 10
+    que no son por filamento."""
+    per = {}
+    for path, strict in ((ORCA_TEMPLATE, True), (DEFAULT_TEMPLATE, False)):
+        template = json.loads(path.read_bytes())
+        count = len(template["filament_settings_id"])
+        per.update({key: len(value) // count for key, value in template.items()
+                    if isinstance(value, list) and len(value) in (count, 2 * count, 4 * count)
+                    and (not strict or len(value) == count or key.startswith("filament_"))})
+    return per
 
 
 def _rgb(colour: str) -> tuple[float, float, float]:
@@ -174,8 +196,10 @@ def with_filament_colours(project_settings: bytes, colours: list[str | None]) ->
     for key, value in list(settings.items()):
         if not isinstance(value, list):
             continue
-        each = per.get(key)
-        if each is None and key.startswith("filament_") and count > 2 and len(value) in (count, 2 * count, 4 * count):
+        # Cuántos valores lleva cada filamento sale de este proyecto: Bambu y Orca no siempre
+        # llevan los mismos en una misma clave.
+        each = None
+        if (key in per or (key.startswith("filament_") and count > 2)) and len(value) in (count, 2 * count, 4 * count):
             each = len(value) // count
         if each is not None and len(value) == each * count:
             chunks = [value[i * each:(i + 1) * each] for i in range(count)]
@@ -199,10 +223,11 @@ def with_filament_colours(project_settings: bytes, colours: list[str | None]) ->
     matrix = settings.get("flush_volumes_matrix")
     if isinstance(matrix, list) and len(matrix) == count * count:
         # La purga mínima va por filamento de origen: lo que sobra de la fórmula en la tabla vieja.
+        # Si todos tenían el mismo color (la plantilla de Orca), la tabla no dice nada: la de PLA.
         minimum = []
         for i in range(count):
             extra = sorted(float(matrix[i * count + j]) - flush_volume(old[i], old[j])
-                           for j in range(count) if j != i)
+                           for j in range(count) if j != i and old[j].upper() != old[i].upper())
             minimum.append(extra[len(extra) // 2] if extra else _DEFAULT_MIN_FLUSH)
         minimum += [minimum[0]] * (total - count)
         for i in replaced:

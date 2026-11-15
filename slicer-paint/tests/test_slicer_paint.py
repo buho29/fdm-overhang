@@ -12,7 +12,7 @@ import pytest
 import trimesh
 from probeta import OVERHANG_DEG, cylinder_back_mask, probeta, side_overhang_masks
 
-from slicer_paint import cli, mesh_io, orient, paint, plate, project, selection
+from slicer_paint import cli, mesh_io, orient, paint, plate, project, selection, writer
 from slicer_paint.gcode import analyze, seam_angles
 from slicer_paint.reader import read_painted
 from slicer_paint.selector import (MAX_DEPTH, MIXED, Capsule, Node, decode, encode, leaves,
@@ -337,13 +337,19 @@ def test_template_passes_the_check_of_the_installed_bambu():
     assert settings["nozzle_diameter"] == ["0.4"]
 
 
-def test_orca_target_stays_free_of_project_settings(tmp_path):
+def test_orca_target_carries_the_orca_template(tmp_path):
     stl = tmp_path / "t.stl"
     probeta().export(stl)
     out = tmp_path / "o.3mf"
     assert cli.main([str(stl), "-o", str(out), "--orient", "none"]) == 0
-    assert _read_entry(out, project.PROJECT_FILE) is None
-    assert 'name="Application"' not in _read_entry(out, "3D/3dmodel.model")
+    settings, version = project.load_orca_template()
+    assert _read_entry(out, project.PROJECT_FILE).encode() == settings
+    assert "orca_version" not in json.loads(settings)
+    # Con la metadata OrcaSlicer, Orca lo toma por un proyecto suyo y usa sus ajustes y sus placas.
+    main = _read_entry(out, "3D/3dmodel.model")
+    assert f'<metadata name="OrcaSlicer">{version}</metadata>' in main
+    assert f'<metadata name="Application">{project.application_version(settings)}</metadata>' in main
+    assert project.read_previous(out).slicer == "orca"
 
 
 def test_project_settings_are_read_from_a_project_file(tmp_path):
@@ -422,7 +428,7 @@ def test_fresh_or_another_slicer_discards_the_saved_print_options(tmp_path, caps
     assert cli.main([str(stl), "-o", str(out), "--orient", "none"]) == 0
     _save_in_slicer(out, "orca")
     assert cli.main([str(stl), "-o", str(out), "--orient", "none", "--fresh"]) == 0
-    assert _read_entry(out, project.PROJECT_FILE) is None
+    assert _read_entry(out, project.PROJECT_FILE).encode() == project.load_orca_template()[0]
     assert 'key="wall_loops"' not in _read_entry(out, "Metadata/model_settings.config")
     _save_in_slicer(out, "orca")
     capsys.readouterr()
@@ -819,7 +825,9 @@ def test_cli_job_writes_colors_and_the_body_filament(tmp_path, capsys):
         assert '<metadata key="extruder" value="2"/>' in z.read("Metadata/model_settings.config").decode()
     captured = capsys.readouterr()
     assert "filamento 2 #0000FF (cuerpo); filamento 4 #FF0000" in captured.out
-    assert "al menos 4 filamentos" in captured.err
+    assert "El proyecto lleva 4 filamentos" in captured.out
+    colours = json.loads(_read_entry(out, project.PROJECT_FILE))["filament_colour"]
+    assert colours[1] == "#0000FF" and colours[3] == "#FF0000"
 
 
 # Placa: varias piezas en un solo 3MF.
@@ -866,12 +874,29 @@ def test_arrange_centres_a_single_part():
 def test_arrange_fills_rows_with_the_gap():
     centers, fits = plate.arrange([(100.0, 50.0), (100.0, 40.0), (100.0, 50.0)])
     assert fits
-    # Dos piezas caben en la primera fila (100 + 5 + 100) y la tercera pasa a la segunda.
-    assert centers[0] == pytest.approx((75.5, 155.5))
-    assert centers[1] == pytest.approx((180.5, 155.5))
-    assert centers[2] == pytest.approx((128.0, 100.5))
-    assert centers[1][0] - centers[0][0] == pytest.approx(100 + plate.PART_GAP_MM)
+    # Una columna de 100 × 150 es más cuadrada que dos filas de 205 × 95. Las de más fondo, detrás.
+    assert centers[0] == pytest.approx((128.0, 178.0))
+    assert centers[2] == pytest.approx((128.0, 123.0))
+    assert centers[1] == pytest.approx((128.0, 73.0))
     assert (centers[0][1] - 25) - (centers[2][1] + 25) == pytest.approx(plate.PART_GAP_MM)
+    assert (centers[2][1] - 25) - (centers[1][1] + 20) == pytest.approx(plate.PART_GAP_MM)
+
+
+def test_arrange_makes_a_square_instead_of_a_row():
+    centers, fits = plate.arrange([(40.0, 40.0)] * 4)
+    assert fits
+    assert sorted(centers) == [pytest.approx(c) for c in
+                               [(105.5, 105.5), (105.5, 150.5), (150.5, 105.5), (150.5, 150.5)]]
+    # Las piezas del WormGear: antes, una sola fila de casi toda la cama.
+    sizes = [(47.7, 47.8), (17.5, 17.5), (105.0, 75.0), (14.0, 12.0), (14.0, 12.0), (12.0, 14.0), (12.0, 14.0)]
+    centers, fits = plate.arrange(sizes)
+    low = np.min([np.subtract(c, np.divide(s, 2)) for c, s in zip(centers, sizes)], axis=0)
+    high = np.max([np.add(c, np.divide(s, 2)) for c, s in zip(centers, sizes)], axis=0)
+    assert fits and max(high - low) < 150
+    for i in range(len(sizes)):          # sin solaparse
+        for j in range(i):
+            apart = np.abs(np.subtract(centers[i], centers[j])) - (np.add(sizes[i], sizes[j]) / 2)
+            assert apart.max() >= plate.PART_GAP_MM - 1e-6
 
 
 def test_arrange_reports_parts_that_do_not_fit():
@@ -943,8 +968,75 @@ def test_cli_plate_paints_each_part_and_places_them_on_the_bed(tmp_path, capsys)
     for low, high in boxes:
         assert (low[:2] >= 0).all() and (high[:2] <= 256).all()
         assert low[2] == pytest.approx(0.0, abs=1e-5)
-    # Una al lado de la otra, a 5 mm.
-    assert boxes[1][0][0] - boxes[0][1][0] == pytest.approx(plate.PART_GAP_MM, abs=1e-4)
+    # Separadas 5 mm, una al lado o detrás de la otra.
+    apart = np.maximum(boxes[1][0][:2] - boxes[0][1][:2], boxes[0][0][:2] - boxes[1][1][:2])
+    assert apart.max() == pytest.approx(plate.PART_GAP_MM, abs=1e-4)
+    assert _read_entry(out, "Metadata/model_settings.config").count("<plate>") == 1
+
+
+def test_plate_origins_follow_bambu_studio():
+    # Bambu Studio pone ceil(√n) placas por fila, a 256 × 1,2 mm, y las filas hacia -Y.
+    assert writer.plate_origin(1, 1) == (0.0, 0.0)
+    assert writer.plate_origin(2, 2) == pytest.approx((307.2, 0.0))
+    assert writer.plate_origin(3, 3) == pytest.approx((0.0, -307.2))
+    assert writer.plate_origin(4, 4) == pytest.approx((307.2, -307.2))
+    assert writer.plate_origin(3, 5) == pytest.approx((614.4, 0.0))
+
+
+def test_plate_writes_several_plates(tmp_path):
+    box = trimesh.creation.box(extents=(30, 20, 10))
+    path = tmp_path / "placas.3mf"
+    write_plate(path, [PlateObject(box.vertices, box.faces, name="A", center=(100.0, 128.0)),
+                       PlateObject(box.vertices, box.faces, name="B", center=(128.0, 128.0), plate=2),
+                       PlateObject(box.vertices, box.faces, name="C", center=(160.0, 128.0))],
+                plate_settings=[{"plater_name": "uno"}, {"plater_name": "dos"}])
+    root = ET.fromstring(_read_entry(path, "Metadata/model_settings.config"))
+    plates = {}
+    for element in root.findall("plate"):
+        meta = {m.get("key"): m.get("value") for m in element.findall("metadata")}
+        ids = [{m.get("key"): m.get("value") for m in inst.findall("metadata")}["object_id"]
+               for inst in element.findall("model_instance")]
+        plates[meta["plater_id"]] = (meta["plater_name"], ids)
+    assert plates == {"1": ("uno", ["2", "6"]), "2": ("dos", ["4"])}
+    a, b, c = read_painted(path)
+    centre = lambda m: (m.vertices.min(axis=0)[:2] + m.vertices.max(axis=0)[:2]) / 2  # noqa: E731
+    assert centre(a) == pytest.approx((100, 128)) and centre(c) == pytest.approx((160, 128))
+    assert centre(b) == pytest.approx((128 + 307.2, 128))
+    with pytest.raises(ValueError, match="seguidas"):
+        write_plate(path, [PlateObject(box.vertices, box.faces, plate=2)])
+
+
+def test_cli_plate_puts_each_body_colour_on_its_own_plate(tmp_path, capsys):
+    for name, size in (("A", 30), ("B", 20), ("C", 25)):
+        trimesh.creation.box(extents=(size, size, 10)).export(tmp_path / f"{name}.stl")
+    colours = {"A": (1, "#AA8CE6"), "B": (2, "#EBEBEB"), "C": (1, "#AA8CE6")}
+    for name, (filament, rgb) in colours.items():
+        _write_job(tmp_path / f"{name}.json", bed=[0, 0, -1],
+                   color={"body": {"filament": filament, "rgb": rgb}})
+    placa = _write_plate(tmp_path / "placa.json", [{"stl": f"{n}.stl", "fusion": f"{n}.json"} for n in "ABC"])
+    out = tmp_path / "placa.3mf"
+    assert cli.main(["--plate", str(placa), "-o", str(out), "--target", "bambu"]) == 0
+    printed = capsys.readouterr().out
+    assert "Placa 1 (filamento 1 #AA8CE6): A, C" in printed and "Placa 2 (filamento 2 #EBEBEB): B" in printed
+    config = _read_entry(out, "Metadata/model_settings.config")
+    assert config.count("<plate>") == 2 and 'value="Filamento 2 #EBEBEB"' in config
+    a, b, c = read_painted(out)
+    assert b.vertices[:, 0].min() > 307.2 and max(a.vertices[:, 0].max(), c.vertices[:, 0].max()) < 256
+    # Al reescribir, cada placa conserva lo que se guardó de ella.
+    config = config.replace('value="Filamento 2 #EBEBEB"', 'value="Blanco"')
+    with zipfile.ZipFile(out) as z:
+        entries = {n: z.read(n) for n in z.namelist()}
+    entries["Metadata/model_settings.config"] = config.encode()
+    with zipfile.ZipFile(out, "w") as z:
+        for n, data in entries.items():
+            z.writestr(n, data)
+    assert cli.main(["--plate", str(placa), "-o", str(out), "--target", "bambu"]) == 0
+    config = _read_entry(out, "Metadata/model_settings.config")
+    assert 'value="Blanco"' in config and 'value="Filamento 1 #AA8CE6"' in config
+    # Con destino Orca, igual: lleva su plantilla de proyecto.
+    orca = tmp_path / "orca.3mf"
+    assert cli.main(["--plate", str(placa), "-o", str(orca), "--target", "orca"]) == 0
+    assert _read_entry(orca, "Metadata/model_settings.config").count("<plate>") == 2
 
 
 def test_cli_plate_error_names_the_part_and_writes_nothing(tmp_path, capsys):

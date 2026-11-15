@@ -3,8 +3,9 @@
 La estructura es la mínima que Bambu Studio y OrcaSlicer cargan sin avisos y
 respetando los ajustes por objeto (comprobado en spikes/ con ambos slicers):
 
-- Cada pieza va en su 3D/Objects/object_N.model, y Metadata/model_settings.config lleva la
-  placa y los ajustes de cada una.
+- Cada pieza va en su 3D/Objects/object_N.model, y Metadata/model_settings.config lleva las
+  placas y los ajustes de cada pieza. Las piezas de la placa N se colocan en la cama de esa
+  placa, que el laminador pone al lado de las otras (plate_origin).
 - Se declara BambuStudio:3mfVersion. Sin ajustes de proyecto NO se declara "Application":
   con ella, Orca rechaza el archivo y Bambu falla por línea de comandos.
 - Con ajustes de proyecto (destino Bambu, ver project.py) se añaden los ajustes y "Application".
@@ -15,6 +16,7 @@ respetando los ajustes por objeto (comprobado en spikes/ con ambos slicers):
 from __future__ import annotations
 
 import io
+import math
 import uuid
 import zipfile
 from dataclasses import dataclass, field
@@ -28,6 +30,8 @@ from .selector import BLOCK, ENFORCE, NONE, PaintLayer  # noqa: F401  (estados r
 
 # Centro de la cama de la Bambu Lab P1S (256×256).
 P1S_BED_CENTER = (128.0, 128.0)
+# De una placa a la siguiente en Bambu Studio y Orca: la cama más 1/5 (LOGICAL_PART_PLATE_GAP).
+PLATE_STRIDE = (256.0 * 1.2, 256.0 * 1.2)
 
 CORE_NS = "http://schemas.microsoft.com/3dmanufacturing/core/2015/02"
 BAMBU_NS = "http://schemas.bambulab.com/package/2021"
@@ -58,7 +62,8 @@ _LINES_PER_WRITE = 100_000
 class PlateObject:
     """Una pieza de la placa. Los vértices van ya orientados; center es dónde queda el centro
     de su caja en la cama. En color, el estado de cada triángulo es su número de filamento; el
-    resto lleva el del objeto (el ajuste extruder)."""
+    resto lleva el del objeto (el ajuste extruder). plate es su placa, desde 1, y center se mide
+    en la cama de esa placa."""
     vertices: np.ndarray
     faces: np.ndarray
     support: PaintLayer | np.ndarray | None = None
@@ -67,6 +72,7 @@ class PlateObject:
     settings: dict[str, str] = field(default_factory=dict)
     center: tuple[float, float] = P1S_BED_CENTER
     color: PaintLayer | np.ndarray | None = None
+    plate: int = 1
 
 
 def _ids(number: int) -> tuple[int, int]:
@@ -150,24 +156,42 @@ def _model_instance(number: int) -> str:
 """
 
 
-def _model_settings(objects: list[PlateObject], plate_settings: dict[str, str]) -> str:
-    """Ajustes de cada objeto y una sola placa con todos ellos."""
-    numbers = range(1, len(objects) + 1)
-    plate = {"plater_name": "", "locked": "false", **plate_settings}
+def _model_settings(objects: list[PlateObject], plate_settings: list[dict[str, str]]) -> str:
+    """Ajustes de cada objeto y de cada placa, con sus piezas."""
+    plates = []
+    for plate_id in range(1, _plate_count(objects) + 1):
+        values = {"plater_name": "", "locked": "false",
+                  **(plate_settings[plate_id - 1] if plate_id <= len(plate_settings) else {})}
+        plates.append("  <plate>\n"
+                      f'    <metadata key="plater_id" value="{plate_id}"/>\n'
+                      + _keyed(values, "    ")
+                      + "".join(_model_instance(n) for n, obj in enumerate(objects, 1) if obj.plate == plate_id)
+                      + "  </plate>\n")
     return (f"{XML_HEAD}<config>\n"
-            + "".join(_object_settings(n, obj) for n, obj in zip(numbers, objects))
-            + "  <plate>\n"
-            '    <metadata key="plater_id" value="1"/>\n'
-            + _keyed(plate, "    ")
-            + "".join(_model_instance(n) for n in numbers)
-            + "  </plate>\n</config>\n")
+            + "".join(_object_settings(n, obj) for n, obj in enumerate(objects, 1))
+            + "".join(plates) + "</config>\n")
 
 
-def _item_transform(vertices: np.ndarray, center: tuple[float, float]) -> str:
-    """Lleva el centro de la caja de la pieza a center y su Z mínima a 0."""
+def _plate_count(objects: list[PlateObject]) -> int:
+    return max(obj.plate for obj in objects)
+
+
+def plate_origin(plate: int, count: int) -> tuple[float, float]:
+    """Dónde empieza la cama de la placa plate (desde 1) de count, como las coloca Bambu Studio
+    (PartPlateList::compute_shape_position): ceil(√count) placas por fila, hacia +X, y las filas
+    hacia -Y."""
+    columns = max(1, math.ceil(math.sqrt(count) - 1e-9))
+    row, column = divmod(plate - 1, columns)
+    return column * PLATE_STRIDE[0], -row * PLATE_STRIDE[1]
+
+
+def _item_transform(vertices: np.ndarray, center: tuple[float, float],
+                    origin: tuple[float, float] = (0.0, 0.0)) -> str:
+    """Lleva el centro de la caja de la pieza a center, en la cama que empieza en origin, y su Z
+    mínima a 0."""
     mins, maxs = vertices.min(axis=0), vertices.max(axis=0)
-    tx = center[0] - (mins[0] + maxs[0]) / 2
-    ty = center[1] - (mins[1] + maxs[1]) / 2
+    tx = origin[0] + center[0] - (mins[0] + maxs[0]) / 2
+    ty = origin[1] + center[1] - (mins[1] + maxs[1]) / 2
     return f"1 0 0 0 1 0 0 0 1 {tx:.6f} {ty:.6f} {-mins[2]:.6f}"
 
 
@@ -185,6 +209,7 @@ def _write_object(z: zipfile.ZipFile, number: int, obj: PlateObject) -> None:
 
 def _main_model(objects: list[PlateObject], main_meta: str) -> str:
     wrappers, items = [], []
+    count = _plate_count(objects)
     for number, obj in enumerate(objects, 1):
         part_id, wrapper_id = _ids(number)
         wrappers.append(
@@ -193,7 +218,8 @@ def _main_model(objects: list[PlateObject], main_meta: str) -> str:
             f'p:UUID="{uuid.uuid4()}" transform="1 0 0 0 1 0 0 0 1 0 0 0"/>\n'
             f'</components>\n</object>\n')
         items.append(f'<item objectid="{wrapper_id}" p:UUID="{uuid.uuid4()}" '
-                     f'transform="{_item_transform(obj.vertices, obj.center)}" printable="1"/>\n')
+                     f'transform="{_item_transform(obj.vertices, obj.center, plate_origin(obj.plate, count))}" '
+                     'printable="1"/>\n')
     return (f'{XML_HEAD}<model {_MODEL_ATTRS}>\n{main_meta}<resources>\n{"".join(wrappers)}'
             f'</resources>\n<build p:UUID="{uuid.uuid4()}">\n{"".join(items)}</build>\n</model>\n')
 
@@ -208,8 +234,8 @@ def _model_rels(count: int) -> str:
 def write_plate(path: str | Path, objects: list[PlateObject],
                 project_settings: bytes | None = None, *,
                 metadata: list[tuple[str, str]] | None = None,
-                plate_settings: dict[str, str] | None = None) -> None:
-    """Escribe un 3MF con una o varias piezas en una sola placa.
+                plate_settings: list[dict[str, str]] | dict[str, str] | None = None) -> None:
+    """Escribe un 3MF con una o varias piezas, en una o varias placas (PlateObject.plate).
 
     Cada pieza va en su propio 3D/Objects/object_N.model, con su envoltorio, su <item> y sus
     ajustes. Se coloca con la transformación del <item>, sin tocar los vértices; así la malla
@@ -218,12 +244,19 @@ def write_plate(path: str | Path, objects: list[PlateObject],
 
     metadata sustituye a la Application que se deduce de los ajustes de proyecto: es la del
     3MF que el laminador guardó, cuando se conservan sus opciones (ver project.read_previous).
-    plate_settings son ajustes de la placa, como los de esa misma placa guardada.
+    plate_settings son los ajustes de cada placa, como su nombre o los de esa misma placa
+    guardada; un dict solo, los de la primera.
     """
     if not objects:
         raise ValueError("Una placa necesita al menos una pieza")
     objects = [PlateObject(np.asarray(o.vertices, dtype=float), np.asarray(o.faces, dtype=np.int64),
-                           o.support, o.seam, o.name, o.settings, o.center, o.color) for o in objects]
+                           o.support, o.seam, o.name, o.settings, o.center, o.color, o.plate)
+               for o in objects]
+    used = {o.plate for o in objects}
+    if used != set(range(1, max(used) + 1)):
+        raise ValueError(f"Las placas tienen que ir seguidas desde la 1: {sorted(used)}")
+    if isinstance(plate_settings, dict):
+        plate_settings = [plate_settings]
     main_meta = _VERSION_META
     if project_settings is not None and metadata is None:
         metadata = [("Application", application_version(project_settings))]
@@ -238,7 +271,7 @@ def write_plate(path: str | Path, objects: list[PlateObject],
             _write_object(z, number, obj)
         z.writestr("3D/3dmodel.model", _main_model(objects, main_meta))
         z.writestr("3D/_rels/3dmodel.model.rels", _model_rels(len(objects)))
-        z.writestr("Metadata/model_settings.config", _model_settings(objects, plate_settings or {}))
+        z.writestr("Metadata/model_settings.config", _model_settings(objects, plate_settings or []))
         if project_settings is not None:
             z.writestr(PROJECT_FILE, project_settings)
 

@@ -112,15 +112,15 @@ Para imprimir con varios filamentos (AMS): el cuerpo va con un filamento y algun
 | `body` | No | Filamento del cuerpo: lo que no se pinta. Por defecto, el 1 |
 | `paint` | No | Zonas de color. Cada una es una [selección](#selección) con `faces` y `patches`, sin `edges`, y su `filament` |
 | `filament` | Sí | Número de filamento en el laminador, de 1 a 17 |
-| `rgb` | No | Color como `#RRGGBB`. Con destino Bambu, es el color de ese filamento en el proyecto; con destino Orca, solo sale en los mensajes |
+| `rgb` | No | Color como `#RRGGBB`. Es el color de ese filamento en el proyecto |
 
 - El filamento del cuerpo se escribe como filamento del objeto (`extruder`), aunque el 3MF que se reescribe tuviera otro.
 - Si dos zonas se pisan, gana la última.
-- **Destino Bambu:** el proyecto lleva un filamento por color, con el color de `rgb`, también si se conservan las opciones de un 3MF guardado.
+- **Proyecto:** lleva un filamento por color, con el color de `rgb`, también si se conservan las opciones de un 3MF guardado. Vale para los dos destinos: cada uno lleva su plantilla de proyecto de la P1S.
   - Si el proyecto tiene menos filamentos, los nuevos copian los ajustes del 1. Si tiene más, los que sobran se quedan como estaban.
   - Un filamento de otro material que el 1, como el PC de la plantilla, pasa a ser una copia del 1 si recibe un color.
   - La tabla de purgas se recalcula con los colores nuevos, con la fórmula de Bambu Studio. Al imprimir, se empareja cada filamento con una bobina del AMS.
-- **Destino Orca:** el 3MF no lleva los colores de los filamentos, porque no puede llevar ajustes de proyecto. slicer-paint escribe qué color va en cada filamento («Colores: filamento 1 #2060FF (cuerpo); filamento 2 #FF0000 (12.0 mm²)») y avisa si hacen falta más de uno.
+- slicer-paint escribe qué color va en cada filamento: «Colores: filamento 1 #2060FF (cuerpo); filamento 2 #FF0000 (12.0 mm²)».
 - Una cara de Fusion se reconoce en el STL por los triángulos cuyos tres vértices quedan sobre ella, a 0,06 mm como mucho. Así el borde entre dos caras tangentes, como una pupila sobre el ojo, sale limpio.
 - Cada triángulo entero se escribe con su filamento: `4` es el 1, `8` el 2, `0C` el 3 y `1C` el 4 (de 3 en adelante, `C` y después el número menos 3, al revés). Las del 3 y el 4 están comprobadas con un cubo pintado en Orca.
 
@@ -158,6 +158,7 @@ slicer-paint --plate placa.json -o placa.3mf --open orca
 - Cada pieza se procesa como si fuera sola, con su archivo de pieza y las reglas de arriba.
 - Con `--plate` no se pone malla de entrada. Las opciones de una sola pieza (`--orient`, `--part`, `--fusion`, `--seam`, `--seam-block`, `--support-enforce` y `--support-block`) dan error: lo que hacen va en el archivo de pieza de cada una. Las demás opciones valen para todas las piezas.
 - Cada pieza es un objeto del 3MF con sus propios ajustes. Los soportes solo se activan en las piezas que tienen pintura de soportes.
-- **Colocación:** en filas de izquierda a derecha, empezando por detrás, con 5 mm entre piezas y el conjunto centrado en la cama de la P1S (256 × 256 mm, sin la esquina delantera izquierda). Se usa la caja de cada pieza ya orientada y no se giran. Si no caben, el 3MF se escribe igual y avisa de que hay que ordenarlas en el laminador.
+- **Colocación:** en filas de izquierda a derecha, empezando por detrás, con 5 mm entre piezas y el conjunto centrado en la cama de la P1S (256 × 256 mm, sin la esquina delantera izquierda). Las piezas van de más a menos fondo, y se elige el ancho de fila que deja el conjunto más cuadrado. Se usa la caja de cada pieza ya orientada y no se giran. Si no caben, el 3MF se escribe igual y avisa de que hay que ordenarlas en el laminador.
+- **Una placa por color:** si las piezas llevan `color` y hay más de un filamento de cuerpo, cada filamento de cuerpo va en su placa, en orden de filamento, con el nombre «Filamento N #RRGGBB». Las piezas se colocan en la cama de su placa, que el laminador pone al lado de las otras.
 - **Errores:** dicen de qué pieza son, como `pieza 2 (Tapa): …`. Si una pieza falla no se escribe nada, y la salida es el código 2.
-- La salida por consola da un resumen por pieza, que empieza con `Pieza N: nombre`, y al final `Escrito: placa.3mf (para orca, N piezas)`.
+- La salida por consola da un resumen por pieza, que empieza con `Pieza N: nombre`; con varias placas, `Placa N (filamento N #RRGGBB): piezas`, y al final `Escrito: placa.3mf (para orca, N piezas)`.
