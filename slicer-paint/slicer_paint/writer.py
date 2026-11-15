@@ -6,6 +6,9 @@ respetando los ajustes por objeto (comprobado en spikes/ con ambos slicers):
 - Cada pieza va en su 3D/Objects/object_N.model, y Metadata/model_settings.config lleva las
   placas y los ajustes de cada pieza. Las piezas de la placa N se colocan en la cama de esa
   placa, que el laminador pone al lado de las otras (plate_origin).
+- Si las piezas traen su sitio de montaje (PlateObject.assembly), model_settings.config lleva el
+  bloque <assemble>: la vista de ensamblaje de Bambu Studio y de Orca las muestra montadas, y la
+  cama sigue con las piezas repartidas.
 - Se declara BambuStudio:3mfVersion. Sin ajustes de proyecto NO se declara "Application":
   con ella, Orca rechaza el archivo y Bambu falla por línea de comandos.
 - Con ajustes de proyecto (destino Bambu, ver project.py) se añaden los ajustes y "Application".
@@ -63,7 +66,8 @@ class PlateObject:
     """Una pieza de la placa. Los vértices van ya orientados; center es dónde queda el centro
     de su caja en la cama. En color, el estado de cada triángulo es su número de filamento; el
     resto lleva el del objeto (el ajuste extruder). plate es su placa, desde 1, y center se mide
-    en la cama de esa placa."""
+    en la cama de esa placa. assembly, si se da, es su sitio en la vista de ensamblaje: la matriz
+    4×4 que lleva sus vértices a la pieza montada."""
     vertices: np.ndarray
     faces: np.ndarray
     support: PaintLayer | np.ndarray | None = None
@@ -73,6 +77,7 @@ class PlateObject:
     center: tuple[float, float] = P1S_BED_CENTER
     color: PaintLayer | np.ndarray | None = None
     plate: int = 1
+    assembly: np.ndarray | None = None
 
 
 def _ids(number: int) -> tuple[int, int]:
@@ -156,8 +161,29 @@ def _model_instance(number: int) -> str:
 """
 
 
+def transform_text(matrix: np.ndarray) -> str:
+    """Una transformación 4×4 escrita como en el 3MF: las tres filas de arriba, columna a
+    columna (m00 m10 m20 m01 … tx ty tz)."""
+    return " ".join(f"{v:.9g}" for v in np.asarray(matrix, dtype=float)[:3, :4].T.ravel())
+
+
+def _assemble(objects: list[PlateObject]) -> str:
+    """Bloque <assemble>: el sitio de cada pieza en la vista de ensamblaje. Es un assemble_item
+    por instancia, con el offset a cero, como lo guarda el laminador (bbs_3mf.cpp)."""
+    items = []
+    for n, obj in enumerate(objects, 1):
+        if obj.assembly is None:
+            continue
+        recentred = np.eye(4)   # la malla está escrita con el centro de su caja en el origen
+        recentred[:3, 3] = _box_center(obj.vertices)
+        items.append(f'   <assemble_item object_id="{_ids(n)[1]}" instance_id="0" '
+                     f'transform="{transform_text(obj.assembly @ recentred)}" offset="0 0 0" />\n')
+    items = "".join(items)
+    return f"  <assemble>\n{items}  </assemble>\n" if items else ""
+
+
 def _model_settings(objects: list[PlateObject], plate_settings: list[dict[str, str]]) -> str:
-    """Ajustes de cada objeto y de cada placa, con sus piezas."""
+    """Ajustes de cada objeto y de cada placa, con sus piezas, y el ensamblaje."""
     plates = []
     for plate_id in range(1, _plate_count(objects) + 1):
         values = {"plater_name": "", "locked": "false",
@@ -169,7 +195,7 @@ def _model_settings(objects: list[PlateObject], plate_settings: list[dict[str, s
                       + "  </plate>\n")
     return (f"{XML_HEAD}<config>\n"
             + "".join(_object_settings(n, obj) for n, obj in enumerate(objects, 1))
-            + "".join(plates) + "</config>\n")
+            + "".join(plates) + _assemble(objects) + "</config>\n")
 
 
 def _plate_count(objects: list[PlateObject]) -> int:
@@ -185,14 +211,20 @@ def plate_origin(plate: int, count: int) -> tuple[float, float]:
     return column * PLATE_STRIDE[0], -row * PLATE_STRIDE[1]
 
 
+def _box_center(vertices: np.ndarray) -> np.ndarray:
+    """Centro de la caja de la malla. La malla se escribe con él en el origen, como la guardan
+    los laminadores: al cargar un 3MF la centran así y no corrigen la vista de ensamblaje
+    (comprobado con spikes/verify_ensamblaje.py)."""
+    return (vertices.min(axis=0) + vertices.max(axis=0)) / 2
+
+
 def _item_transform(vertices: np.ndarray, center: tuple[float, float],
                     origin: tuple[float, float] = (0.0, 0.0)) -> str:
-    """Lleva el centro de la caja de la pieza a center, en la cama que empieza en origin, y su Z
-    mínima a 0."""
-    mins, maxs = vertices.min(axis=0), vertices.max(axis=0)
-    tx = origin[0] + center[0] - (mins[0] + maxs[0]) / 2
-    ty = origin[1] + center[1] - (mins[1] + maxs[1]) / 2
-    return f"1 0 0 0 1 0 0 0 1 {tx:.6f} {ty:.6f} {-mins[2]:.6f}"
+    """Lleva el centro de la caja de la pieza, que en el archivo está en el origen, a center, en
+    la cama que empieza en origin, y su Z mínima a 0."""
+    height = vertices[:, 2].max() - vertices[:, 2].min()
+    tx, ty = origin[0] + center[0], origin[1] + center[1]
+    return f"1 0 0 0 1 0 0 0 1 {tx:.6f} {ty:.6f} {height / 2:.6f}"
 
 
 def _write_object(z: zipfile.ZipFile, number: int, obj: PlateObject) -> None:
@@ -200,8 +232,8 @@ def _write_object(z: zipfile.ZipFile, number: int, obj: PlateObject) -> None:
         out = io.TextIOWrapper(raw, encoding="utf-8", newline="\n")
         out.write(f'{XML_HEAD}<model {_MODEL_ATTRS}>\n{_VERSION_META}<resources>\n'
                   f'<object id="{_ids(number)[0]}" p:UUID="{uuid.uuid4()}" type="model">\n')
-        _write_mesh(out, obj.vertices, obj.faces, _as_layer(obj.support), _as_layer(obj.seam),
-                    _as_layer(obj.color))
+        _write_mesh(out, obj.vertices - _box_center(obj.vertices), obj.faces,
+                    _as_layer(obj.support), _as_layer(obj.seam), _as_layer(obj.color))
         out.write("</object>\n</resources>\n<build/>\n</model>\n")
         out.flush()
         out.detach()
@@ -250,7 +282,8 @@ def write_plate(path: str | Path, objects: list[PlateObject],
     if not objects:
         raise ValueError("Una placa necesita al menos una pieza")
     objects = [PlateObject(np.asarray(o.vertices, dtype=float), np.asarray(o.faces, dtype=np.int64),
-                           o.support, o.seam, o.name, o.settings, o.center, o.color, o.plate)
+                           o.support, o.seam, o.name, o.settings, o.center, o.color, o.plate,
+                           None if o.assembly is None else np.asarray(o.assembly, dtype=float))
                for o in objects]
     used = {o.plate for o in objects}
     if used != set(range(1, max(used) + 1)):

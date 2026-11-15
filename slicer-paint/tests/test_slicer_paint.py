@@ -1039,6 +1039,75 @@ def test_cli_plate_puts_each_body_colour_on_its_own_plate(tmp_path, capsys):
     assert _read_entry(orca, "Metadata/model_settings.config").count("<plate>") == 2
 
 
+def _matrix(text):
+    """Transformación 4×4 de un atributo transform del 3MF (columna a columna)."""
+    matrix = np.eye(4)
+    matrix[:3, :4] = np.array([float(v) for v in text.split()]).reshape(4, 3).T
+    return matrix
+
+
+def _assembled_vertices(path):
+    """Vértices de cada objeto en la vista de ensamblaje, por id de objeto."""
+    with zipfile.ZipFile(path) as z:
+        root = ET.fromstring(z.read("Metadata/model_settings.config"))
+        out = {}
+        for item in root.iter("assemble_item"):
+            number = int(item.get("object_id")) // 2
+            model = ET.fromstring(z.read(f"3D/Objects/object_{number}.model"))
+            local = np.array([[float(v.get(k)) for k in "xyz"] for v in model.iter() if v.tag.endswith("}vertex")])
+            matrix = _matrix(item.get("transform"))
+            assert item.get("instance_id") == "0" and item.get("offset") == "0 0 0"
+            out[item.get("object_id")] = local @ matrix[:3, :3].T + matrix[:3, 3]
+    return out
+
+
+def test_transform_text_is_written_column_by_column():
+    matrix = np.eye(4)
+    matrix[:3, :3] = [[0, -1, 0], [1, 0, 0], [0, 0, 1]]
+    matrix[:3, 3] = [5, 6, 7]
+    assert writer.transform_text(matrix) == "0 1 0 -1 0 0 0 0 1 5 6 7"
+    assert _matrix(writer.transform_text(matrix)) == pytest.approx(matrix)
+
+
+def test_cli_plate_keeps_the_fusion_assembly_for_the_assembly_view(tmp_path):
+    # Una caja y su tapa encima, que se imprime boca abajo y desplazada en la cama.
+    caja = trimesh.creation.box(extents=(40, 30, 20))
+    caja.apply_translation((50, -20, 10))
+    tapa = trimesh.creation.box(extents=(30, 20, 4))
+    tapa.apply_translation((55, -20, 22))
+    top = tapa.vertices[:, 2] > 23
+    tapa.vertices[top, 0] = 55 + (tapa.vertices[top, 0] - 55) / 2   # arriba, 15 mm de ancho
+    for name, mesh, bed in (("Caja", caja, [0, 0, -1]), ("Tapa", tapa, [0, 0, 1])):
+        mesh.export(tmp_path / f"{name}.stl")
+        _write_job(tmp_path / f"{name}.json", bed=bed)
+    placa = _write_plate(tmp_path / "placa.json", [
+        {"stl": f"{n}.stl", "fusion": f"{n}.json", "name": n} for n in ("Caja", "Tapa")])
+    out = tmp_path / "placa.3mf"
+    assert cli.main(["--plate", str(placa), "-o", str(out), "--fresh"]) == 0
+    assembled = _assembled_vertices(out)
+    assert set(assembled) == {"2", "4"}
+    # Como en Fusion, con el conjunto centrado en la cama y apoyado en Z=0.
+    loaded = [mesh_io.load_mesh(tmp_path / f"{n}.stl") for n in ("Caja", "Tapa")]
+    low = np.min([m.vertices.min(axis=0) for m in loaded], axis=0)
+    high = np.max([m.vertices.max(axis=0) for m in loaded], axis=0)
+    shift = np.array([128.0 - (low[0] + high[0]) / 2, 128.0 - (low[1] + high[1]) / 2, -low[2]])
+    assert low[2] == pytest.approx(0.0)
+    for got, mesh in zip((assembled["2"], assembled["4"]), loaded):
+        assert got == pytest.approx(mesh.vertices + shift, abs=1e-4)
+    # En la cama, la tapa sigue boca abajo (lo estrecho abajo) y apoyada.
+    _, en_cama = read_painted(out)
+    assert en_cama.vertices[:, 2].min() == pytest.approx(0.0, abs=1e-5)
+    assert np.ptp(en_cama.vertices[en_cama.vertices[:, 2] < 1, 0]) == pytest.approx(15.0, abs=1e-4)
+
+
+def test_single_part_has_no_assembly(tmp_path):
+    stl = tmp_path / "prisma.stl"
+    _prism().export(stl)
+    out = tmp_path / "prisma.3mf"
+    assert cli.main([str(stl), "-o", str(out), "--fresh"]) == 0
+    assert "assemble" not in _read_entry(out, "Metadata/model_settings.config")
+
+
 def test_cli_plate_error_names_the_part_and_writes_nothing(tmp_path, capsys):
     _prism().export(tmp_path / "Prisma.stl")
     (tmp_path / "Tapa.json").write_text(json.dumps({"version": 3, "bed": [0, 0]}), encoding="utf-8")

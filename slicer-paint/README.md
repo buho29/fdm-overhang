@@ -68,6 +68,7 @@ El archivo de placa enumera las piezas: el STL de cada una, su archivo de pieza 
 - `--orient`, `--part`, `--fusion`, `--seam`, `--seam-block`, `--support-enforce` y `--support-block` son de una sola pieza y dan error con `--plate`. Lo que hacen va en el archivo de pieza de cada una.
 - Cada pieza es un objeto con sus propios ajustes: `enable_support` solo va en las que tienen pintura de soportes.
 - Las piezas se colocan en filas sobre la cama de la P1S, con 5 mm entre ellas: de más a menos fondo y con el ancho de fila que deja el conjunto más cuadrado. El conjunto se centra. Si no caben, el archivo se escribe igual y avisa: hay que ordenarlas en el laminador.
+- La vista de ensamblaje del laminador enseña las piezas montadas, tal como están en sus STL.
 - **Una placa por color:** si las piezas llevan colores (archivo de pieza con `color`) y hay más de un filamento de cuerpo, cada filamento de cuerpo va en su placa, que se llama «Filamento N #RRGGBB». La pintura de color se conserva.
 - Los avisos y errores dicen de qué pieza son. Si una pieza falla, no se escribe nada y sale con código 2.
 

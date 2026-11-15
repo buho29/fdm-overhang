@@ -110,3 +110,12 @@ def transform_points(points: np.ndarray, mesh: trimesh.Trimesh, rotation: np.nda
     moved = points @ rotation.T
     moved[:, 2] -= (mesh.vertices @ rotation.T)[:, 2].min()
     return moved
+
+
+def assembly_matrix(mesh: trimesh.Trimesh, rotation: np.ndarray) -> np.ndarray:
+    """La inversa de transform_points, en una matriz 4×4: devuelve la pieza orientada a las
+    coordenadas de la malla original, que en un ensamblaje de Fusion es su sitio montada."""
+    forward = np.eye(4)
+    forward[:3, :3] = rotation
+    forward[2, 3] = -(mesh.vertices @ rotation.T)[:, 2].min()
+    return np.linalg.inv(forward)

@@ -9,11 +9,12 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
+import numpy as np
 import trimesh
 
 from . import mesh_io, orient, paint, plate, project, selection
 from .selector import BLOCK, DEFAULT_RESOLUTION, ENFORCE, PaintLayer
-from .writer import PlateObject, write_plate
+from .writer import P1S_BED_CENTER, PlateObject, write_plate
 
 ORCA_PATHS = [
     r"C:\Program Files\WindowsApps\OrcaSlicer.OrcaSlicer_*\orca-slicer.exe",
@@ -154,6 +155,8 @@ class PreparedPart:
     # Colores del archivo de pieza y su pintura, con el filamento de cada triángulo.
     color_plan: selection.ColorPlan | None = None
     color: PaintLayer | None = None
+    # Lleva la pieza orientada a las coordenadas de su STL: en una placa de Fusion, montada.
+    assembly: np.ndarray | None = None
 
 
 # Opciones que solo tienen sentido para una pieza; con --plate van en el archivo de cada una.
@@ -200,7 +203,8 @@ def prepare_part(args: argparse.Namespace, name: str, mesh: trimesh.Trimesh,
     if job is not None and job.color is not None:
         plan = job.color.moved(lambda points: orient.transform_points(points, mesh, chosen.rotation))
         color = paint.paint_colors(oriented, plan, args.paint_resolution, warnings)
-    return PreparedPart(name, oriented, chosen, support, seam, plan, color)
+    return PreparedPart(name, oriented, chosen, support, seam, plan, color,
+                        orient.assembly_matrix(mesh, chosen.rotation))
 
 
 def prepare_plate(args: argparse.Namespace) -> list[PreparedPart]:
@@ -314,6 +318,20 @@ def color_summary(part: PreparedPart) -> str:
     return "; ".join(text)
 
 
+def assembled(parts: list[PreparedPart]) -> list[np.ndarray | None]:
+    """Sitio de cada pieza en la vista de ensamblaje: como en sus STL, con el conjunto centrado en
+    la cama de la placa 1 y apoyado en Z=0. Con una sola pieza no hay ensamblaje."""
+    if len(parts) < 2 or any(p.assembly is None for p in parts):
+        return [None] * len(parts)
+    placed = [p.oriented.vertices @ p.assembly[:3, :3].T + p.assembly[:3, 3] for p in parts]
+    low = np.min([v.min(axis=0) for v in placed], axis=0)
+    high = np.max([v.max(axis=0) for v in placed], axis=0)
+    shift = np.eye(4)
+    shift[:2, 3] = np.array(P1S_BED_CENTER) - (low[:2] + high[:2]) / 2
+    shift[2, 3] = -low[2]
+    return [shift @ p.assembly for p in parts]
+
+
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     try:
@@ -365,9 +383,10 @@ def main(argv: list[str] | None = None) -> int:
             values["plater_name"] = name
     output.parent.mkdir(parents=True, exist_ok=True)
     kept_objects = previous.objects if previous else {}
+    assembly = assembled(parts)
     write_plate(output, [PlateObject(p.oriented.vertices, p.oriented.faces, p.support, p.seam,
                                      p.name, part_settings(args, p, kept_objects.get(p.name)),
-                                     placed[i][1], p.color, placed[i][0])
+                                     placed[i][1], p.color, placed[i][0], assembly[i])
                          for i, p in enumerate(parts)], project_settings,
                 metadata=metadata,
                 plate_settings=plate_settings)
