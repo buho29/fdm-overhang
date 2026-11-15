@@ -50,7 +50,7 @@ Si el 3MF de salida ya existe y lo guardaste desde el laminador, se conservan su
 - **El proyecto:** impresora, filamentos y proceso, con cualquier cambio que hicieras.
 - **Cada objeto, por su nombre:** el filamento que le asignaste y sus ajustes propios, como las paredes o el relleno. Si la pieza tiene pintura de soportes, `enable_support` siempre queda activado. El tipo de soporte (normal o árbol, manual o automático) es el que guardaste, salvo que pidas otro con `--support-style` o `--support-mode`.
 - **Cada placa:** su nombre y los ajustes que cambiaste solo para ella.
-- **La guía de montaje de Bambu Studio**, con sus pasos y notas. Las piezas nuevas van en su propio paso, antes del montaje final.
+- **La guía de montaje de Bambu Studio**, con sus pasos y notas. Las piezas nuevas se añaden al montaje final.
 
 La geometría, la orientación, la colocación en la cama y la pintura salen de nuevo. Los modificadores y las piezas añadidas en el laminador se pierden, y cada pieza vuelve a la placa que le toca.
 
@@ -69,7 +69,7 @@ El archivo de placa enumera las piezas: el STL de cada una, su archivo de pieza 
 - `--orient`, `--part`, `--fusion`, `--seam`, `--seam-block`, `--support-enforce` y `--support-block` son de una sola pieza y dan error con `--plate`. Lo que hacen va en el archivo de pieza de cada una.
 - Cada pieza es un objeto con sus propios ajustes: `enable_support` solo va en las que tienen pintura de soportes.
 - Las piezas se colocan en filas sobre la cama de la P1S, con 5 mm entre ellas: de más a menos fondo y con el ancho de fila que deja el conjunto más cuadrado. El conjunto se centra. Si no caben, el archivo se escribe igual y avisa: hay que ordenarlas en el laminador.
-- La vista de ensamblaje del laminador enseña las piezas montadas, tal como están en sus STL. Con destino Bambu Studio, el 3MF lleva además la guía de montaje: un paso por pieza y el montaje final, para completarla en Bambu.
+- La vista de ensamblaje del laminador enseña las piezas montadas, tal como están en sus STL. Con destino Bambu Studio, el 3MF lleva además la guía de montaje: solo el montaje final con todas las piezas, para añadir los pasos en Bambu.
 - **Una placa por color:** si las piezas llevan colores (archivo de pieza con `color`) y hay más de un filamento de cuerpo, cada filamento de cuerpo va en su placa, que se llama «Filamento N #RRGGBB». La pintura de color se conserva.
 - Los avisos y errores dicen de qué pieza son. Si una pieza falla, no se escribe nada y sale con código 2.
 

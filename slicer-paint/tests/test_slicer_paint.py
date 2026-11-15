@@ -1116,35 +1116,37 @@ def _step_summary(data):
             for i in json.loads(data)["items"]]
 
 
-def test_steps_build_one_step_per_part_and_the_final_assembly():
+def test_steps_build_only_the_final_assembly():
     data = steps.build(["Caja", "Tapa"], "placa")
-    assert _step_summary(data) == [(1, 1, "Caja", 0, [("Caja", 0)]), (2, 2, "Tapa", 0, [("Tapa", 1)]),
-                                   (3, 3, "Montaje final", 1, [("Caja", 0), ("Tapa", 1)])]
+    assert _step_summary(data) == [(1, 1, "Montaje final", 1, [("Caja", 0), ("Tapa", 1)])]
     root = json.loads(data)
     assert root["version"] == 1.1 and root["pdf_export"] == {"title": "placa"}
-    assert all(i["type"] == "sub" and i["keyframes"] == [] for i in root["items"])
+    assert root["items"][0]["type"] == "sub" and root["items"][0]["keyframes"] == []
 
 
-def test_steps_merge_keeps_what_was_edited_and_adds_new_parts():
+def test_steps_merge_keeps_what_was_edited_and_adds_new_parts_to_the_final_assembly():
+    # Guardado en Bambu con un paso hecho a mano antes del montaje final.
     saved = json.loads(steps.build(["Caja", "Tapa"], "placa"))
     saved["camera_ref_viewport_w"] = 1200
     saved["pdf_export"]["title"] = "Mi caja"
-    caja, tapa, final = saved["items"]
-    caja["name"] = "Primero la caja"
-    caja["id"] = 7
-    tapa["inherited_from_step_id"] = 7
-    tapa["children"][0]["object_id"] = 42   # id de la sesión de Bambu que guardó
-    tapa["keyframes"] = [{"id": 1, "name": "nota"}]
+    final = saved["items"][0]
+    final["id"] = 7
+    final["children"][1]["object_id"] = 42   # id de la sesión de Bambu que guardó
+    saved["items"].insert(0, {"type": "sub", "name": "Tapa primero", "id": 3, "step": 1,
+                              "is_final_assembly": 0, "keyframes": [{"id": 1, "name": "nota"}],
+                              "children": [{"type": "single", "name": "Tapa", "object_idx": 1}]})
     merged = steps.merge(json.dumps(saved).encode(), ["Caja", "Tapa", "Bisagra"], "placa")
     assert _step_summary(merged) == [
-        (7, 1, "Primero la caja", 0, [("Caja", 0)]), (2, 2, "Tapa", 0, [("Tapa", 1)]),
-        (8, 3, "Bisagra", 0, [("Bisagra", 2)]),
-        (3, 4, "Montaje final", 1, [("Caja", 0), ("Tapa", 1), ("Bisagra", 2)])]
+        (3, 1, "Tapa primero", 0, [("Tapa", 1)]),
+        (7, 2, "Montaje final", 1, [("Caja", 0), ("Tapa", 1), ("Bisagra", 2)])]
     root = json.loads(merged)
     assert root["camera_ref_viewport_w"] == 1200 and root["pdf_export"]["title"] == "Mi caja"
-    tapa = root["items"][1]
-    assert tapa["inherited_from_step_id"] == 7 and tapa["keyframes"] == [{"id": 1, "name": "nota"}]
-    assert "object_id" not in tapa["children"][0]
+    assert root["items"][0]["keyframes"] == [{"id": 1, "name": "nota"}]
+    assert "object_id" not in root["items"][1]["children"][1]
+    # Sin montaje final, se añade uno con todas.
+    alone = {"items": [saved["items"][0]]}
+    assert _step_summary(steps.merge(json.dumps(alone).encode(), ["Caja", "Tapa"], "placa")) == [
+        (3, 1, "Tapa primero", 0, [("Tapa", 1)]), (4, 2, "Montaje final", 1, [("Caja", 0), ("Tapa", 1)])]
     assert steps.merge(b"no es json", ["Caja"], "placa") is None
     assert steps.merge(b'{"items": 3}', ["Caja"], "placa") is None
 
@@ -1159,19 +1161,19 @@ def test_cli_plate_writes_the_bambu_assembly_guide_and_keeps_it(tmp_path):
     out = tmp_path / "placa.3mf"
     assert cli.main(["--plate", str(placa), "-o", str(out), "--target", "bambu", "--fresh"]) == 0
     written = _read_entry(out, steps.STEPS_FILE)
-    assert [s[2] for s in _step_summary(written)] == ["Caja", "Tapa", "Montaje final"]
+    assert [s[2] for s in _step_summary(written)] == ["Montaje final"]
     # Se edita la guía en Bambu y se vuelve a enviar al mismo 3MF: se conserva.
     entries = {}
     with zipfile.ZipFile(out) as z:
         for name in z.namelist():
             entries[name] = z.read(name)
-    entries[steps.STEPS_FILE] = written.replace('"name": "Caja"', '"name": "Base primero"', 1).encode()
+    entries[steps.STEPS_FILE] = written.replace('"name": "Montaje final"', '"name": "Todo junto"', 1).encode()
     with zipfile.ZipFile(out, "w") as z:
         for name, data in entries.items():
             z.writestr(name, data)
     assert cli.main(["--plate", str(placa), "-o", str(out), "--target", "bambu"]) == 0
     assert [s[2] for s in _step_summary(_read_entry(out, steps.STEPS_FILE))] == [
-        "Base primero", "Tapa", "Montaje final"]
+        "Todo junto"]
 
 
 def test_cli_plate_error_names_the_part_and_writes_nothing(tmp_path, capsys):

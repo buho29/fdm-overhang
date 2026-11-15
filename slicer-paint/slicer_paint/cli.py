@@ -335,7 +335,7 @@ def assembled(parts: list[PreparedPart]) -> list[np.ndarray | None]:
 def assembly_steps(parts: list[PreparedPart], target: str, output: Path,
                    previous: project.Previous | None) -> bytes | None:
     """Guía de montaje de Bambu Studio, con varias piezas: la que se guardó en Bambu, con las
-    piezas nuevas añadidas, o un paso por pieza y el montaje final. Orca no la lee."""
+    piezas nuevas añadidas al montaje final, o solo el montaje final con todas. Orca no la lee."""
     if len(parts) < 2 or target != "bambu":
         return None
     names = [p.name for p in parts]

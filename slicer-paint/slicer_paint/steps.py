@@ -5,9 +5,12 @@ AssemblyStepsJson.cpp de Bambu Studio 2.8.2: una lista de pasos ("sub") con sus 
 ("single"). Cada pieza se busca por su nombre de objeto, con object_idx como pista; la cámara
 y las notas de cada paso (keyframes) son opcionales y Bambu las pone al editar la guía.
 
-Comprobado el 2026-11-15 en Bambu Studio 2.8.2: con los pasos escritos así, la Lista de
+Se escribe un solo paso, el montaje final con todas las piezas; los demás pasos se hacen en
+Bambu. Comprobado el 2026-11-15 en Bambu Studio 2.8.2: con los pasos escritos así, la Lista de
 ensamblaje dice en qué paso va cada pieza en vez de «Sin ensamblar», y al pulsar un paso se
-abre su guía de montaje (tipo de unión, notas y línea de tiempo).
+abre su guía de montaje (tipo de unión, notas y línea de tiempo). Que el último paso sea el
+montaje final con todas las piezas es lo que Bambu Studio 2.9 llama un ensamblaje válido
+(qualified_assembly).
 """
 from __future__ import annotations
 
@@ -44,17 +47,13 @@ def _document(items: list[dict], title: str, extra: dict | None = None) -> bytes
     return json.dumps(root, indent=2, ensure_ascii=False).encode("utf-8")
 
 
+def _final(names: list[str]) -> dict:
+    return _step(FINAL_NAME, [_single(name, i) for i, name in enumerate(names)], final=True)
+
+
 def build(names: list[str], title: str) -> bytes:
-    """Un paso por pieza, en orden, y al final el montaje con todas."""
-    items = [_step(name, [_single(name, i)]) for i, name in enumerate(names)]
-    items.append(_step(FINAL_NAME, [_single(name, i) for i, name in enumerate(names)], final=True))
-    return _document(items, title)
-
-
-def _names_in(item: dict) -> set[str]:
-    if item.get("type") == "single":
-        return {item.get("name", "")}
-    return set().union(*(_names_in(c) for c in item.get("children", []) if isinstance(c, dict)))
+    """Un solo paso: el montaje final con todas las piezas."""
+    return _document([_final(names)], title)
 
 
 def _forget_object_ids(item: dict) -> None:
@@ -67,8 +66,8 @@ def _forget_object_ids(item: dict) -> None:
 
 
 def merge(saved: bytes, names: list[str], title: str) -> bytes | None:
-    """Los pasos que se guardaron en Bambu, con las piezas nuevas añadidas: cada una en su paso,
-    antes del montaje final, y también en él. None si lo guardado no se entiende."""
+    """Los pasos que se guardaron en Bambu, con las piezas nuevas añadidas al montaje final (o
+    un montaje final nuevo, al final, si no lo hay). None si lo guardado no se entiende."""
     try:
         root = json.loads(saved.decode("utf-8"))
         items = root["items"]
@@ -78,15 +77,13 @@ def merge(saved: bytes, names: list[str], title: str) -> bytes | None:
         return None
     for item in items:
         _forget_object_ids(item)
-    present = set().union(*(_names_in(i) for i in items)) if items else set()
-    missing = [(i, name) for i, name in enumerate(names) if name not in present]
-    if missing:
-        finals = [i for i, item in enumerate(items) if item.get("is_final_assembly") == _FINAL]
-        at = finals[0] if finals else len(items)
-        items[at:at] = [_step(name, [_single(name, i)]) for i, name in missing]
-        for item in items[at + len(missing):]:
-            if item.get("is_final_assembly") == _FINAL:
-                item.setdefault("children", []).extend(_single(name, i) for i, name in missing)
+    finals = [item for item in items if item.get("is_final_assembly") == _FINAL]
+    if not finals:
+        items.append(_final(names))
+    for final in finals:
+        children = final.setdefault("children", [])
+        present = {c.get("name") for c in children if isinstance(c, dict)}
+        children.extend(_single(name, i) for i, name in enumerate(names) if name not in present)
     extra = {k: v for k, v in root.items() if k not in ("version", "items", "pdf_export")}
     pdf = root.get("pdf_export") if isinstance(root.get("pdf_export"), dict) else {}
     return _document(items, pdf.get("title") or title, extra)
