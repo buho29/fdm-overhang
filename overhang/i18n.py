@@ -134,6 +134,17 @@ EN = {
     'Abre un diseño (espacio de trabajo DISEÑO).': 'Open a design (DESIGN workspace).',
     'No hay cuerpos que analizar.': 'There are no bodies to analyse.',
     'Elige los cuerpos.': 'Select the bodies.',
+    'Cuerpos: %s': 'Bodies: %s',
+    'Cancelar': 'Cancel',
+    'Los cuerpos analizados. Pulsa para cambiarlos.': 'The analysed bodies. Press to change them.',
+    '%d cuerpos': '%d bodies',
+    'Soportes en los voladizos': 'Supports on the overhangs',
+    'Marca como soportes forzados, para Enviar al laminador, las caras de los cuerpos '
+    'analizados con al menos 1 mm² en voladizo, sin los puentes. Se guarda al cerrar con '
+    'Cerrar (no con Cancelar); cada cara se corrige en Enviar al laminador.':
+        'Marks as enforced supports, for Send to slicer, the faces of the analysed bodies with at least 1 mm² of '
+        'overhang, leaving out bridges. It is saved when you close with Close (not with Cancel); each face can be '
+        'corrected in Send to slicer.',
     'Elige la cara plana que va sobre la cama.': 'Select the planar face that goes on the bed.',
     'voladizo (menos de %d° desde la horizontal)': 'overhang (below %d° from the horizontal)',
     'apoyo en la cama': 'on the bed',

@@ -31,14 +31,15 @@ Un soporte de móvil visto desde abajo: los dos puentes que no pasan de 23 mm sa
 
 | Campo | Qué hace |
 |---|---|
-| Cuerpos | *Todos los visibles* (también los de las ocurrencias y los de malla) o *Elegidos* |
-| Cama | *Plano XY (Z arriba)*, *Plano XZ (Y arriba)* o *Cara plana elegida*: la cara que irá sobre la cama, como el "colocar en cara" de los laminadores. Por defecto, según la orientación de modelado de Fusion |
+| Cuerpos | *Todos los visibles* (también los de las ocurrencias y los de malla) o *Elegidos*. Al pulsar *Analizar*, el campo de selección se cambia por un botón con los nombres de los cuerpos, porque el resaltado azul de Fusion taparía la capa. Pulsándolo vuelve el campo con ellos, para quitar o añadir |
+| Cama | *Plano XY (Z arriba)*, *Plano XZ (Y arriba)* o *Cara plana elegida*: la cara que irá sobre la cama, como el "colocar en cara" de los laminadores. Por defecto, según la orientación de modelado de Fusion. La cara elegida se guarda al cerrar con *Cerrar* como cama de su cuerpo en *Enviar al laminador* |
 | Cada cuerpo sobre la cama | Cada cuerpo se apoya en su punto más bajo. Sin marcar, la cama es el punto más bajo de todos (útil para un conjunto montado) |
 | Ángulo límite (°) | Medido desde la horizontal, como en PrusaSlicer y Orca: 45° para la mayoría de materiales; 30° si la impresora y el material lo aguantan |
 | Degradado | Rojo → naranja según la inclinación; sin marcar, todo rojo |
 | Detectar puentes | Pinta en azul los techos planos tendidos entre paredes y descuenta su área del voladizo. Sin marcar, salen como voladizo |
 | Puente máximo | Luz a partir de la cual un puente vuelve a salir en rojo, con un aviso. Por defecto 23 mm |
 | Calidad de la malla | Teselado *Baja*, *Normal* o *Alta*. Las curvas se clasifican por triángulos: con más calidad, el borde de la zona marcada es más fino |
+| Soportes en los voladizos | Marca como soportes forzados, para *Enviar al laminador*, las caras de los cuerpos analizados con al menos 1 mm² en voladizo, con el ángulo y la cama del diálogo y sin los puentes. Se ven con el contorno verde. Se guarda al cerrar con *Cerrar* (no con *Cancelar*); cada cara se corrige en *Enviar al laminador*. Va por caras enteras: en una superficie curva grande, como la hélice de un sinfín, puede marcar de más |
 | Mantener al cerrar | La capa se queda al cerrar el diálogo y se recalcula cada vez que termina un comando que pueda cambiar el modelo. Se quita al volver a abrir el diálogo. Solo dura mientras el diseño está abierto: no se guarda en el archivo |
 
 El diálogo se abre sin calcular nada: se ajustan los campos y se pulsa **Analizar**. A partir de ahí, lo que no necesita calcular de nuevo (el ángulo, el degradado, los puentes…) se actualiza al momento; si cambia algo que sí lo necesita (la calidad o los cuerpos), la capa se quita hasta volver a pulsar.

@@ -31,14 +31,15 @@ A phone stand seen from below: the two bridges up to 23 mm are blue; the 30 mm o
 
 | Field | What it does |
 |---|---|
-| Bodies | *All visible* (including those in occurrences and mesh bodies) or *Selected* |
-| Bed | *XY plane (Z up)*, *XZ plane (Y up)* or *Selected planar face*: the face that goes on the bed, like the slicers' "place on face". Defaults to Fusion's modeling orientation |
+| Bodies | *All visible* (including those in occurrences and mesh bodies) or *Selected*. When you press *Analyse*, the selection field turns into a button with the bodies' names, because Fusion's blue highlight would hide the layer. Pressing it brings the field back with them, to remove or add |
+| Bed | *XY plane (Z up)*, *XZ plane (Y up)* or *Selected planar face*: the face that goes on the bed, like the slicers' "place on face". Defaults to Fusion's modeling orientation. The chosen face is saved, when you close with *Close*, as its body's bed in *Send to slicer* |
 | Each body on the bed | Each body rests on its own lowest point. Unchecked, the bed is the lowest point of all of them (useful for an assembly) |
 | Limit angle (°) | Measured from the horizontal, as in PrusaSlicer and Orca: 45° for most materials; 30° if the printer and material can handle it |
 | Gradient | Red → orange by inclination; unchecked, everything red |
 | Detect bridges | Paints flat ceilings spanning walls in blue and takes their area out of the overhang. Unchecked, they show as overhangs |
 | Maximum bridge | Span above which a bridge goes back to red, with a warning. 23 mm by default |
 | Mesh quality | *Low*, *Normal* or *High* tessellation. Curves are classified per triangle: higher quality gives a finer edge to the marked area |
+| Supports on the overhangs | Marks as enforced supports, for *Send to slicer*, the faces of the analysed bodies with at least 1 mm² of overhang, with the dialog's angle and bed and leaving out bridges. They show with a green outline. It is saved when you close with *Close* (not with *Cancel*); each face can be corrected in *Send to slicer*. It works with whole faces: on a large curved surface, like a worm's helix, it may mark too much |
 | Keep when closed | The layer stays after closing the dialog and is recomputed after every command that may change the model. It is removed when the dialog is opened again. It only lasts while the design is open: it is not saved in the file |
 
 The dialog opens without computing anything: set the fields and press **Analyse**. From then on, whatever does not need computing again (the angle, the gradient, the bridges…) updates at once; if something that does need it changes (the quality or the bodies), the layer goes away until you press it again.
