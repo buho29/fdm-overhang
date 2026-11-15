@@ -54,6 +54,22 @@ def offset(coords, normals, d):
     return out
 
 
+def split_by_color(coords, normals, colors, step=8):
+    """Reparte una capa de tres vértices por triángulo en {color: (coords, normales)}, un color por triángulo.
+    Fusion pinta las mallas de color por vértice por encima de los cuerpos transparentes y en otro orden que el
+    resto, y con los cuerpos en transparencia unas partes de la capa desaparecen a trozos: con un color sólido por
+    malla se pinta bien. El color es la media de los tres vértices, redondeada a múltiplos de 'step' para que no
+    salgan miles de mallas con un degradado."""
+    out = {}
+    for t in range(len(coords) // 9):
+        c = colors[t * 12:t * 12 + 12]
+        key = tuple(min(255, int(round((c[k] + c[k + 4] + c[k + 8]) / 3.0 / step)) * step) for k in range(3)) + (c[3],)
+        pts, nrm = out.setdefault(key, ([], []))
+        pts += coords[t * 9:t * 9 + 9]
+        nrm += normals[t * 9:t * 9 + 9]
+    return out
+
+
 def lift(tol_analysis, tol_display):
     """Cuánto separar la capa de la superficie para que no quede enterrada en la malla que pinta Fusion.
     Cada malla se aparta de la superficie real como mucho su tolerancia: en zonas convexas la de análisis

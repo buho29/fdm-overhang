@@ -63,7 +63,10 @@ GAP_SURFACE_TOL = 0.0005  # cm: más fina, porque se miden holguras de décimas 
 GAP_BACK = 0.001          # cm: hasta 0,01 mm de separación o de solape cuenta como que dos caras se tocan
 GAP_MARGIN = 2 * GAP_SURFACE_TOL   # cm: error de la medida entre dos curvas, una holgura justa no es fallo
 MODES = [('thickness', 'Espesor'), ('gap', 'Espacio')]
-XRAY_OPACITY = 0.25
+# Ver a través: opacidad de los cuerpos medidos
+XRAY = [('off', 'No', None), ('on', 'Transparencia 75 %', 0.25), ('vivid', 'Transparencia 88 %', 0.12)]
+# Cómo se pinta la capa con los cuerpos transparentes (ver _paint)
+LAYERS = [('top', 'Por encima (viva, puede tener huecos)'), ('inplace', 'En su sitio (sin huecos, más pálida)')]
 BUSY_DELAY = 1       # s: si la medida acaba antes, no llega a salir la ventana de progreso
 BUSY_EVERY = 2000    # rayos entre dos actualizaciones de la ventana de progreso
 QUALITIES = [('low', 'Baja', adsk.fusion.TriangleMeshQualityOptions.LowQualityTriangleMesh),
@@ -102,7 +105,7 @@ def _load_settings():
          'quality': 'normal', 'keep': False, 'bridge': True, 'bridge_max': 23.0,
          'th_bodies': 'visible', 'th_res': 'coarse', 'th_paint': 'map', 'th_limit': 0.8, 'th_lo': 0.0,
          'th_hi': 4.0, 'th_keep': False, 'th_mode': 'thickness', 'gap_limit': 0.1, 'gap_lo': 0.0, 'gap_hi': 2.0,
-         'gap_others': True, 'th_xray': True, 'sl_dir': '', 'slicer_paint': '', **_sl_defaults()}
+         'gap_others': True, 'th_xray': 'on', 'th_layer': 'inplace', 'sl_dir': '', 'slicer_paint': '', **_sl_defaults()}
     try:
         with open(SETTINGS, encoding='utf-8') as f:
             s.update(json.load(f))
@@ -115,6 +118,8 @@ def _load_settings():
     for k in ('bed', 'sl_bed'):
         if s[k] == 'face':
             s[k] = _default_bed()
+    if isinstance(s['th_xray'], bool):   # antes era una casilla
+        s['th_xray'] = 'on' if s['th_xray'] else 'off'
     return s
 
 
@@ -208,12 +213,21 @@ def _clear(group_id=GROUP_ID, design=None):
             g.deleteMe()
 
 
-def _paint(design, layers, group_id):
+def _paint(design, layers, group_id, solid=False):
+    """Pinta las capas con color por vértice. Con solid, una malla de color sólido por color (A.split_by_color):
+    hace falta con los cuerpos en transparencia, porque Fusion pinta las de color por vértice desordenadas con
+    ellos y la capa se ve a trozos donde se mira a través de un cuerpo."""
     if not layers:
         return
     grp = design.rootComponent.customGraphicsGroups.add()
     grp.id = group_id
     for tc, tn, tcol in layers:
+        if solid:
+            for rgba, (pts, nrm) in A.split_by_color(tc, tn, tcol).items():
+                mesh = grp.addMesh(adsk.fusion.CustomGraphicsCoordinates.create(pts), list(range(len(pts) // 3)), nrm, [])
+                mesh.color = adsk.fusion.CustomGraphicsSolidColorEffect.create(adsk.core.Color.create(*rgba))
+                mesh.depthPriority = 1
+            continue
         coords = adsk.fusion.CustomGraphicsCoordinates.create(tc)
         coords.colors = tcol
         mesh = grp.addMesh(coords, list(range(len(tc) // 3)), tn, [])
@@ -505,7 +519,7 @@ def _th_read(inputs):
             'th_limit': round(inputs.itemById('th_limit').value * 10, 4),   # mm
             'th_lo': round(inputs.itemById('th_lo').value * 10, 4), 'th_hi': round(inputs.itemById('th_hi').value * 10, 4),
             'th_keep': inputs.itemById('th_keep').value, 'th_mode': _choice(inputs, 'th_mode', MODES),
-            'th_xray': inputs.itemById('th_xray').value,
+            'th_xray': _choice(inputs, 'th_xray', XRAY), 'th_layer': _choice(inputs, 'th_layer', LAYERS),
             'gap_limit': round(inputs.itemById('gap_limit').value * 10, 4),
             'gap_lo': round(inputs.itemById('gap_lo').value * 10, 4),
             'gap_hi': round(inputs.itemById('gap_hi').value * 10, 4),
@@ -909,11 +923,13 @@ def _th_draw(inputs):
         inputs.itemById('th_info').formattedText = html
     try:
         if design:
-            _paint(design, layers, TH_GROUP_ID)
-            if _th_state.get('last') and _th_state['last']['settings']['th_xray']:
+            last = _th_state.get('last')
+            opacity = dict((k, o) for k, _, o in XRAY)[last['settings']['th_xray']] if last else None
+            _paint(design, layers, TH_GROUP_ID, solid=opacity is not None and last['settings']['th_layer'] == 'inplace')
+            if opacity is not None:
                 # dentro de la vista previa: Fusion devuelve la opacidad de cada cuerpo al cambiar un campo y al cerrar
                 for b in bodies:
-                    b.opacity = XRAY_OPACITY
+                    b.opacity = opacity
         _app.activeViewport.refresh()
     finally:
         busy = _th_state.pop('busy', None)
@@ -937,6 +953,7 @@ def _th_update_visibility(inputs):
     inputs.itemById('gap_others').isVisible = is_gap
     inputs.itemById('gap_lo').isVisible = is_map and is_gap
     inputs.itemById('gap_hi').isVisible = is_map and is_gap
+    inputs.itemById('th_layer').isVisible = _choice(inputs, 'th_xray', XRAY) != 'off'
 
 
 class _ThCreatedHandler(adsk.core.CommandCreatedEventHandler):
@@ -985,9 +1002,17 @@ class _ThCreatedHandler(adsk.core.CommandCreatedEventHandler):
             for key, label, _ in RESOLUTIONS:
                 dd.listItems.add(tr(label), key == s['th_res'])
             dd.tooltip = tr('Lado máximo de los triángulos con los que se mide. Más fina, más detalle y más lento.')
-            xray = inputs.addBoolValueInput('th_xray', tr('Ver a través'), True, '', bool(s['th_xray']))
-            xray.tooltip = tr('Pone los cuerpos medidos en transparencia mientras el diálogo está abierto, para ver '
-                              'lo que queda por dentro. Al cerrar vuelven a su opacidad.')
+            dd = inputs.addDropDownCommandInput('th_xray', tr('Ver a través'), adsk.core.DropDownStyles.TextListDropDownStyle)
+            for key, label, _ in XRAY:
+                dd.listItems.add(tr(label), key == s['th_xray'])
+            dd.tooltip = tr('Pone los cuerpos medidos en transparencia mientras el diálogo está abierto, para ver '
+                            'lo que queda por dentro. Al cerrar vuelven a su opacidad.')
+            dd = inputs.addDropDownCommandInput('th_layer', tr('Capa'), adsk.core.DropDownStyles.TextListDropDownStyle)
+            for key, label in LAYERS:
+                dd.listItems.add(tr(label), key == s['th_layer'])
+            dd.tooltip = tr('Por encima: la capa se ve con su color vivo a través de los cuerpos, pero Fusion la '
+                            'pinta desordenada con ellos y donde se mira a través de un cuerpo puede salir a trozos. '
+                            'En su sitio: se ve entera, tras los cuerpos transparentes, y por eso más pálida.')
             keep = inputs.addBoolValueInput('th_keep', tr('Mantener al cerrar'), True, '', bool(s['th_keep']))
             keep.tooltip = tr('La capa se queda al cerrar el diálogo, hasta que cambie alguno de los cuerpos o se '
                               'vuelva a abrir el diálogo. No se guarda en el archivo.')

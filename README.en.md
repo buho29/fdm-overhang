@@ -66,7 +66,8 @@ The phone stand with the scale from 0 to 4 mm and **See through**: the curved wa
 | Paint | *Colour map* or *Only what is below the minimum* (in red) |
 | Scale from / to | Values of the red and the blue in the colour map. Each measure keeps its own |
 | Resolution | Maximum side of the triangles used to measure: *Fast (2 mm)*, *Normal (1 mm)* or *Fine (0.5 mm)*. In mesh bodies (an STL) their triangles are split down to that size |
-| See through | Makes the measured bodies transparent while the dialog is open, to see what is inside. They go back to their opacity when it is closed, also with *Keep when closed* |
+| See through | Makes the measured bodies transparent while the dialog is open, to see what is inside, with 75 % or 88 % transparency. They go back to their opacity when it is closed, also with *Keep when closed* |
+| Layer | With *See through*: *On top* draws the layer in its bright colour, but Fusion draws it out of order with the transparent bodies and it may show in patches where you look through a body; *In place* draws it whole, behind the bodies, and therefore paler |
 | Keep when closed | The layer stays after closing the dialog until one of the bodies changes or the dialog is opened again (it cannot be recomputed outside the dialog). It is not saved in the file |
 
 As in FDM overhangs, nothing is measured until you press **Analyse**. Measurements are kept while the dialog is open: the scale, the minimum or *Paint* update at once, and a resolution or bodies not measured yet wait for the button.

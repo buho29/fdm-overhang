@@ -66,7 +66,8 @@ El soporte de móvil con la escala de 0 a 4 mm y **Ver a través**: la pared cur
 | Pintar | *Mapa de color* o *Solo lo que no llega al mínimo* (en rojo) |
 | Escala desde / hasta | Medidas del rojo y del azul en el mapa de color. Cada medida guarda las suyas |
 | Resolución | Lado máximo de los triángulos con los que se mide: *Rápida (2 mm)*, *Normal (1 mm)* o *Fina (0,5 mm)*. En los cuerpos de malla (un STL) se parten sus triángulos hasta ese tamaño |
-| Ver a través | Pone los cuerpos medidos en transparencia mientras el diálogo está abierto, para ver lo que queda por dentro. Al cerrar vuelven a su opacidad, también con *Mantener al cerrar* |
+| Ver a través | Pone los cuerpos medidos en transparencia mientras el diálogo está abierto, para ver lo que queda por dentro, con transparencia del 75 % o del 88 %. Al cerrar vuelven a su opacidad, también con *Mantener al cerrar* |
+| Capa | Con *Ver a través*: *Por encima* pinta la capa con su color vivo, pero Fusion la dibuja desordenada con los cuerpos transparentes y puede salir a trozos donde se mira a través de un cuerpo; *En su sitio* la pinta entera, tras los cuerpos, y por eso más pálida |
 | Mantener al cerrar | La capa se queda al cerrar el diálogo hasta que cambie alguno de los cuerpos o se vuelva a abrir el diálogo (fuera del diálogo no se puede recalcular). No se guarda en el archivo |
 
 Igual que en Voladizos FDM, no se mide nada hasta pulsar **Analizar**. Las medidas se guardan mientras el diálogo está abierto: la escala, el mínimo o *Pintar* se actualizan al momento, y una resolución o unos cuerpos que aún no se han medido esperan al botón.

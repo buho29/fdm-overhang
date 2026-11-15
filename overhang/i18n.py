@@ -73,6 +73,18 @@ EN = {
     'lo que queda por dentro. Al cerrar vuelven a su opacidad.':
         'Makes the measured bodies transparent while the dialog is open, to see what is inside. '
         'They go back to their opacity when it is closed.',
+    'No': 'No',
+    'Transparencia 75 %': 'Transparency 75 %',
+    'Transparencia 88 %': 'Transparency 88 %',
+    'Capa': 'Layer',
+    'Por encima (viva, puede tener huecos)': 'On top (bright, may have holes)',
+    'En su sitio (sin huecos, más pálida)': 'In place (no holes, paler)',
+    'Por encima: la capa se ve con su color vivo a través de los cuerpos, pero Fusion la '
+    'pinta desordenada con ellos y donde se mira a través de un cuerpo puede salir a trozos. '
+    'En su sitio: se ve entera, tras los cuerpos transparentes, y por eso más pálida.':
+        'On top: the layer keeps its bright colour through the bodies, but Fusion draws it out of order with them '
+        'and it may show in patches where you look through a body. In place: it is whole, behind the transparent '
+        'bodies, and therefore paler.',
     'Espesor': 'Thickness',
     'Espacio': 'Gap',
     'Espesor: de cada pared hasta su otra cara. Espacio: de cada cara hasta lo que tiene '

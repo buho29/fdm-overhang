@@ -344,5 +344,18 @@ class OffsetTest(unittest.TestCase):
         self.assertGreater(A.lift(0.0, 0.0), 0.0)
 
 
+class SplitByColorTest(unittest.TestCase):
+    def test_groups_triangles_by_rounded_mean_color(self):
+        tri = [0, 0, 0, 1, 0, 0, 0, 1, 0]
+        nrm = [0, 0, 1] * 3
+        red = [220, 30, 30, 255] * 3
+        almost_red = [222, 31, 29, 255] * 3
+        mixed = [255, 0, 0, 255, 255, 0, 0, 255, 0, 0, 255, 255]   # degradado dentro del triángulo
+        out = A.split_by_color(tri * 3, nrm * 3, red + almost_red + mixed)
+        self.assertEqual(len(out), 2)
+        self.assertEqual(len(out[(224, 32, 32, 255)][0]), 18)   # los dos rojos juntos
+        self.assertEqual(out[(168, 0, 88, 255)], (tri, nrm))
+
+
 if __name__ == '__main__':
     unittest.main()
