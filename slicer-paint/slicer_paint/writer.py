@@ -30,6 +30,7 @@ import numpy as np
 
 from .project import PROJECT_FILE, application_version
 from .selector import BLOCK, ENFORCE, NONE, PaintLayer  # noqa: F401  (estados reexportados)
+from .steps import STEPS_FILE
 
 # Centro de la cama de la Bambu Lab P1S (256×256).
 P1S_BED_CENTER = (128.0, 128.0)
@@ -266,7 +267,8 @@ def _model_rels(count: int) -> str:
 def write_plate(path: str | Path, objects: list[PlateObject],
                 project_settings: bytes | None = None, *,
                 metadata: list[tuple[str, str]] | None = None,
-                plate_settings: list[dict[str, str]] | dict[str, str] | None = None) -> None:
+                plate_settings: list[dict[str, str]] | dict[str, str] | None = None,
+                assembly_steps: bytes | None = None) -> None:
     """Escribe un 3MF con una o varias piezas, en una o varias placas (PlateObject.plate).
 
     Cada pieza va en su propio 3D/Objects/object_N.model, con su envoltorio, su <item> y sus
@@ -277,7 +279,8 @@ def write_plate(path: str | Path, objects: list[PlateObject],
     metadata sustituye a la Application que se deduce de los ajustes de proyecto: es la del
     3MF que el laminador guardó, cuando se conservan sus opciones (ver project.read_previous).
     plate_settings son los ajustes de cada placa, como su nombre o los de esa misma placa
-    guardada; un dict solo, los de la primera.
+    guardada; un dict solo, los de la primera. assembly_steps es la guía de montaje de Bambu
+    Studio (ver steps.py).
     """
     if not objects:
         raise ValueError("Una placa necesita al menos una pieza")
@@ -307,6 +310,8 @@ def write_plate(path: str | Path, objects: list[PlateObject],
         z.writestr("Metadata/model_settings.config", _model_settings(objects, plate_settings or []))
         if project_settings is not None:
             z.writestr(PROJECT_FILE, project_settings)
+        if assembly_steps is not None:
+            z.writestr(STEPS_FILE, assembly_steps)
 
 
 def write_3mf(path: str | Path, vertices: np.ndarray, faces: np.ndarray,

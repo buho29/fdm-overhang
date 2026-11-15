@@ -12,7 +12,7 @@ import pytest
 import trimesh
 from probeta import OVERHANG_DEG, cylinder_back_mask, probeta, side_overhang_masks
 
-from slicer_paint import cli, mesh_io, orient, paint, plate, project, selection, writer
+from slicer_paint import cli, mesh_io, orient, paint, plate, project, selection, steps, writer
 from slicer_paint.gcode import analyze, seam_angles
 from slicer_paint.reader import read_painted
 from slicer_paint.selector import (MAX_DEPTH, MIXED, Capsule, Node, decode, encode, leaves,
@@ -1106,6 +1106,72 @@ def test_single_part_has_no_assembly(tmp_path):
     out = tmp_path / "prisma.3mf"
     assert cli.main([str(stl), "-o", str(out), "--fresh"]) == 0
     assert "assemble" not in _read_entry(out, "Metadata/model_settings.config")
+    assert steps.STEPS_FILE not in zipfile.ZipFile(out).namelist()
+
+
+def _step_summary(data):
+    """(id, paso, nombre, final, piezas) de cada paso de la guía de montaje."""
+    return [(i["id"], i["step"], i["name"], i["is_final_assembly"],
+             [(c["name"], c.get("object_idx")) for c in i["children"]])
+            for i in json.loads(data)["items"]]
+
+
+def test_steps_build_one_step_per_part_and_the_final_assembly():
+    data = steps.build(["Caja", "Tapa"], "placa")
+    assert _step_summary(data) == [(1, 1, "Caja", 0, [("Caja", 0)]), (2, 2, "Tapa", 0, [("Tapa", 1)]),
+                                   (3, 3, "Montaje final", 1, [("Caja", 0), ("Tapa", 1)])]
+    root = json.loads(data)
+    assert root["version"] == 1.1 and root["pdf_export"] == {"title": "placa"}
+    assert all(i["type"] == "sub" and i["keyframes"] == [] for i in root["items"])
+
+
+def test_steps_merge_keeps_what_was_edited_and_adds_new_parts():
+    saved = json.loads(steps.build(["Caja", "Tapa"], "placa"))
+    saved["camera_ref_viewport_w"] = 1200
+    saved["pdf_export"]["title"] = "Mi caja"
+    caja, tapa, final = saved["items"]
+    caja["name"] = "Primero la caja"
+    caja["id"] = 7
+    tapa["inherited_from_step_id"] = 7
+    tapa["children"][0]["object_id"] = 42   # id de la sesión de Bambu que guardó
+    tapa["keyframes"] = [{"id": 1, "name": "nota"}]
+    merged = steps.merge(json.dumps(saved).encode(), ["Caja", "Tapa", "Bisagra"], "placa")
+    assert _step_summary(merged) == [
+        (7, 1, "Primero la caja", 0, [("Caja", 0)]), (2, 2, "Tapa", 0, [("Tapa", 1)]),
+        (8, 3, "Bisagra", 0, [("Bisagra", 2)]),
+        (3, 4, "Montaje final", 1, [("Caja", 0), ("Tapa", 1), ("Bisagra", 2)])]
+    root = json.loads(merged)
+    assert root["camera_ref_viewport_w"] == 1200 and root["pdf_export"]["title"] == "Mi caja"
+    tapa = root["items"][1]
+    assert tapa["inherited_from_step_id"] == 7 and tapa["keyframes"] == [{"id": 1, "name": "nota"}]
+    assert "object_id" not in tapa["children"][0]
+    assert steps.merge(b"no es json", ["Caja"], "placa") is None
+    assert steps.merge(b'{"items": 3}', ["Caja"], "placa") is None
+
+
+def test_cli_plate_writes_the_bambu_assembly_guide_and_keeps_it(tmp_path):
+    for name in ("Caja", "Tapa"):
+        trimesh.creation.box(extents=(20, 20, 10)).export(tmp_path / f"{name}.stl")
+    placa = _write_plate(tmp_path / "placa.json", [{"stl": f"{n}.stl", "name": n} for n in ("Caja", "Tapa")])
+    orca = tmp_path / "orca.3mf"
+    assert cli.main(["--plate", str(placa), "-o", str(orca), "--target", "orca", "--fresh"]) == 0
+    assert steps.STEPS_FILE not in zipfile.ZipFile(orca).namelist()
+    out = tmp_path / "placa.3mf"
+    assert cli.main(["--plate", str(placa), "-o", str(out), "--target", "bambu", "--fresh"]) == 0
+    written = _read_entry(out, steps.STEPS_FILE)
+    assert [s[2] for s in _step_summary(written)] == ["Caja", "Tapa", "Montaje final"]
+    # Se edita la guía en Bambu y se vuelve a enviar al mismo 3MF: se conserva.
+    entries = {}
+    with zipfile.ZipFile(out) as z:
+        for name in z.namelist():
+            entries[name] = z.read(name)
+    entries[steps.STEPS_FILE] = written.replace('"name": "Caja"', '"name": "Base primero"', 1).encode()
+    with zipfile.ZipFile(out, "w") as z:
+        for name, data in entries.items():
+            z.writestr(name, data)
+    assert cli.main(["--plate", str(placa), "-o", str(out), "--target", "bambu"]) == 0
+    assert [s[2] for s in _step_summary(_read_entry(out, steps.STEPS_FILE))] == [
+        "Base primero", "Tapa", "Montaje final"]
 
 
 def test_cli_plate_error_names_the_part_and_writes_nothing(tmp_path, capsys):

@@ -26,6 +26,8 @@ import zipfile
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from .steps import STEPS_FILE
+
 PROJECT_FILE = "Metadata/project_settings.config"
 # Proyecto P1S guardado por Bambu Studio 02.08.02.60, con 5 filamentos (PLA y PC).
 DEFAULT_TEMPLATE = Path(__file__).resolve().parent / "templates" / "bambu_p1s_project_settings.config"
@@ -55,13 +57,15 @@ class Previous:
     slicer es "orca" u "bambu". Orca escribe la misma metadata Application que Bambu Studio
     y además una metadata OrcaSlicer, que es lo que los distingue. metadata son esas dos, tal
     cual. objects va por nombre de objeto, sin el nombre; plates lleva los ajustes de cada
-    placa, en orden, sin su número ni sus miniaturas.
+    placa, en orden, sin su número ni sus miniaturas. assembly_steps es la guía de montaje que
+    guardó Bambu Studio (steps.STEPS_FILE), si la hay.
     """
     slicer: str
     metadata: list[tuple[str, str]]
     project_settings: bytes
     objects: dict[str, dict[str, str]] = field(default_factory=dict)
     plates: list[dict[str, str]] = field(default_factory=list)
+    assembly_steps: bytes | None = None
 
 
 # Metadata del 3dmodel.model que identifica al laminador que guardó los ajustes.
@@ -89,6 +93,7 @@ def read_previous(path: str | Path) -> Previous | None:
             model = ET.fromstring(archive.read("3D/3dmodel.model"))
             config = (ET.fromstring(archive.read("Metadata/model_settings.config"))
                       if "Metadata/model_settings.config" in names else None)
+            assembly_steps = archive.read(STEPS_FILE) if STEPS_FILE in names else None
         application_version(settings)
     except (OSError, KeyError, ValueError, zipfile.BadZipFile, ET.ParseError):
         return None
@@ -114,7 +119,8 @@ def read_previous(path: str | Path) -> Previous | None:
             plates.append((number, {k: v for k, v in values.items()
                                     if k != "plater_id" and not k.endswith("_file")}))
     slicer = "orca" if any(name == "OrcaSlicer" for name, _ in metadata) else "bambu"
-    return Previous(slicer, metadata, settings, objects, [values for _, values in sorted(plates, key=lambda p: p[0])])
+    return Previous(slicer, metadata, settings, objects,
+                    [values for _, values in sorted(plates, key=lambda p: p[0])], assembly_steps)
 
 
 def load_orca_template() -> tuple[bytes, str]:

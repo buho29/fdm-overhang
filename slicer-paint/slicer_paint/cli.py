@@ -12,7 +12,7 @@ from pathlib import Path
 import numpy as np
 import trimesh
 
-from . import mesh_io, orient, paint, plate, project, selection
+from . import mesh_io, orient, paint, plate, project, selection, steps
 from .selector import BLOCK, DEFAULT_RESOLUTION, ENFORCE, PaintLayer
 from .writer import P1S_BED_CENTER, PlateObject, write_plate
 
@@ -332,6 +332,18 @@ def assembled(parts: list[PreparedPart]) -> list[np.ndarray | None]:
     return [shift @ p.assembly for p in parts]
 
 
+def assembly_steps(parts: list[PreparedPart], target: str, output: Path,
+                   previous: project.Previous | None) -> bytes | None:
+    """Guía de montaje de Bambu Studio, con varias piezas: la que se guardó en Bambu, con las
+    piezas nuevas añadidas, o un paso por pieza y el montaje final. Orca no la lee."""
+    if len(parts) < 2 or target != "bambu":
+        return None
+    names = [p.name for p in parts]
+    saved = previous.assembly_steps if previous else None
+    kept = steps.merge(saved, names, output.stem) if saved else None
+    return kept or steps.build(names, output.stem)
+
+
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     try:
@@ -389,7 +401,8 @@ def main(argv: list[str] | None = None) -> int:
                                      placed[i][1], p.color, placed[i][0], assembly[i])
                          for i, p in enumerate(parts)], project_settings,
                 metadata=metadata,
-                plate_settings=plate_settings)
+                plate_settings=plate_settings,
+                assembly_steps=assembly_steps(parts, target, output, previous))
 
     for number, part in enumerate(parts, 1):
         if args.plate:

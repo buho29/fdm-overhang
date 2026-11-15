@@ -29,6 +29,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "spikes"))
 from slicer_paint import cli  # noqa: E402
+from slicer_paint.steps import STEPS_FILE  # noqa: E402
 from verify_slicers import WORK, run_slicer  # noqa: E402
 
 OUT = WORK / "ensamblaje"
@@ -125,6 +126,12 @@ def main() -> None:
         code, tail = run_slicer(slicer, ["--export-3mf", "rt.3mf", "--outputdir", str(rt), str(src)])
         dst = rt / "rt.3mf"
         print(f"{slicer:13} roundtrip salida={code}", compare(dst) if dst.exists() else f"SIN ARCHIVO {tail!r}")
+        if dst.exists():
+            names = zipfile.ZipFile(dst).namelist()
+            kept = (json.loads(zipfile.ZipFile(dst).read(STEPS_FILE))["items"]
+                    if STEPS_FILE in names else None)
+            print(f"{slicer:13} guía de montaje:",
+                  [i["name"] for i in kept] if kept is not None else "no la lleva")
 
 
 if __name__ == "__main__":
