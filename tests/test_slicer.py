@@ -126,6 +126,16 @@ class FilesTest(unittest.TestCase):
         self.assertEqual(box, ((1.0, 2.0, 3.0), (11.0, 22.0, 33.0)))
         self.assertTrue(S.bounds_match(box, ((0.1, 0.2, 0.3), (1.1, 2.2, 3.3))))
         self.assertFalse(S.bounds_match(box, ((1.0, 2.0, 3.0), (11.0, 22.0, 33.0))))   # en cm por error
+        self.assertFalse(S.bounds_match(box, ((0.01, 0.02, 0.03), (0.11, 0.22, 0.33))))   # en mm por error
+        self.assertFalse(S.bounds_match(box, ((0.3, 0.2, 0.3), (1.3, 2.2, 3.3))))   # movido 2 mm
+
+    def test_bounds_match_loose_box_of_curved_body(self):
+        # Un disco de smart-sentry: la caja de Fusion era 1,5 mm mayor por lado en X e Y que su malla.
+        stl = ((5.3253, -35.3333, -2.2), (35.3247, -5.3339, 2.8))
+        body = ((0.38276, -3.68311, -0.22), (3.68224, -0.38362, 0.28))
+        self.assertTrue(S.bounds_match(stl, body))
+        moved = ((s[0] + 5, s[1], s[2]) for s in stl)
+        self.assertFalse(S.bounds_match(tuple(moved), body))
 
     def test_write_stl(self):
         c, idx = square()

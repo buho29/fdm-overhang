@@ -98,7 +98,7 @@ def _default_bed():
 def _sl_defaults():
     """Las opciones del diálogo Enviar al laminador por defecto; las que vuelven con Restablecer."""
     return {'sl_what': 'one', 'sl_body': None, 'sl_bed': _default_bed(), 'sl_mesh': 'high', 'sl_open': 'orca',
-            'sl_color': False}
+            'sl_color': False, 'sl_solo': True}
 
 
 def _load_settings():
@@ -1321,6 +1321,10 @@ ROLE_KEYS = [r[0] for r in SL_ROLES]
 ATTR_GROUP = 'buhoFdm'
 ATTR_BODY = 'slicer'       # en el cuerpo: {"bed": "z", "plate": true}
 ATTR_ROLE = 'slicerRole'   # en cada cara o arista elegida: sus campos (sl_face, sl_seam_on…), separados por comas
+# Los cuerpos de un componente referenciado (de otro archivo) no pueden llevar los atributos: irían al otro archivo,
+# que no se guarda con este, y findAttributes de este diseño no los ve. Lo suyo va en un atributo del diseño:
+# {"ruta de la ocurrencia|cuerpo": {"bed": "face", "plate": true, "roles": [[entityToken, "sl_face"], …]}}
+ATTR_REFS = 'slicerRefs'
 PLATE_MARK = '  ✔'         # en la lista de cuerpos, los que van en la placa
 # 'bodies': [(nombre, cuerpo)] de la lista; 'cfgs': {índice: lo elegido para ese cuerpo}; 'current': el índice que
 # muestra el diálogo, cuya configuración está en los campos y no en 'cfgs'; 'touched': los que hay que guardar
@@ -1338,7 +1342,8 @@ def _sl_read(inputs):
     return {'sl_body': _sl_state['bodies'][i][0] if i is not None else None,
             'sl_what': _choice(inputs, 'sl_what', SL_WHAT), 'sl_bed': _choice(inputs, 'sl_bed', BEDS),
             'sl_mesh': _choice(inputs, 'sl_mesh', SL_MESH),
-            'sl_open': _choice(inputs, 'sl_open', OPEN_IN), 'sl_color': inputs.itemById('sl_color').value}
+            'sl_open': _choice(inputs, 'sl_open', OPEN_IN), 'sl_color': inputs.itemById('sl_color').value,
+            'sl_solo': inputs.itemById('sl_solo').value}
 
 
 def _picked(inputs, key):
@@ -1349,9 +1354,20 @@ def _picked(inputs, key):
 def _sl_bodies(design):
     """[(nombre para la lista, cuerpo)] de los sólidos visibles. Con el componente si el nombre se repite."""
     bodies = [b for b in _visible_bodies(design.rootComponent) if getattr(b, 'isSolid', False)] if design else []
-    names = [b.name for b in bodies]
-    return [(b.name if names.count(b.name) == 1 or not b.assemblyContext
-             else '%s (%s)' % (b.name, b.assemblyContext.name), b) for b in bodies]
+    labels = [b.name for b in bodies]
+    # Los nombres tienen que ser únicos: el diálogo elige por nombre, y con dos iguales la lista marcaba uno y los
+    # campos eran del otro (Cuerpo298 en gear base:1+Gear:1 y en gear pan:1+Gear:1). Primero con la ocurrencia y,
+    # si no basta, con la ruta entera.
+    for detail in (lambda o: o.name, lambda o: o.fullPathName.replace('+', ' › ')):
+        labels = [('%s (%s)' % (b.name, detail(b.assemblyContext)) if labels.count(label) > 1 and b.assemblyContext
+                   else label) for label, b in zip(labels, bodies)]
+    repeated = {label for label in labels if labels.count(label) > 1}
+    seen = {}
+    for i, label in enumerate(labels):
+        if label in repeated:
+            seen[label] = seen.get(label, 0) + 1
+            labels[i] = '%s #%d' % (label, seen[label])
+    return list(zip(labels, bodies))
 
 
 def _sl_body(inputs):
@@ -1440,6 +1456,54 @@ def _native_token(entity):
     return (entity.nativeObject or entity).entityToken
 
 
+def _foreign(body):
+    """Si el cuerpo es de un componente referenciado, también dentro de otro (ver ATTR_REFS)."""
+    occ = body.assemblyContext
+    while occ:
+        if occ.isReferencedComponent:
+            return True
+        occ = occ.assemblyContext
+    return False
+
+
+def _ref_key(body):
+    return '%s|%s' % (body.assemblyContext.fullPathName, body.name)
+
+
+def _ref_read(design):
+    a = design.attributes.itemByName(ATTR_GROUP, ATTR_REFS)
+    try:
+        return json.loads(a.value) if a else {}
+    except ValueError:
+        return {}
+
+
+def _ref_write(design, refs):
+    if refs:
+        design.attributes.add(ATTR_GROUP, ATTR_REFS, json.dumps(refs, ensure_ascii=False))
+    else:
+        a = design.attributes.itemByName(ATTR_GROUP, ATTR_REFS)
+        if a:
+            a.deleteMe()
+
+
+def _ref_entities(design, body, saved):
+    """[(cara o arista en el contexto del cuerpo, campos)] de lo guardado para un cuerpo referenciado."""
+    out = []
+    occ, token = body.assemblyContext, _native_token(body)
+    for ent_token, value in saved.get('roles', []):
+        try:
+            found = design.findEntityByToken(ent_token)
+        except Exception:
+            continue
+        for e in found:
+            e = adsk.fusion.BRepFace.cast(e) or adsk.fusion.BRepEdge.cast(e)
+            if e and e.isValid and _native_token(e.body) == token:
+                out.append(((e.nativeObject or e).createForAssemblyContext(occ), S.role_keys(value)))
+                break
+    return out
+
+
 def _sl_load(design, bodies):
     """{índice: lo elegido} de los cuerpos de la lista que lo tienen guardado en el diseño. Los atributos están en
     los objetos nativos: dos ocurrencias del mismo componente comparten lo elegido."""
@@ -1471,6 +1535,19 @@ def _sl_load(design, bodies):
                     cfg['face'] = proxy
                 elif key in cfg:
                     cfg[key].append(proxy)
+    refs = _ref_read(design)
+    for i, (_, b) in enumerate(bodies if refs else []):
+        saved = refs.get(_ref_key(b)) if _foreign(b) else None
+        if not saved:
+            continue
+        cfg = out[i] = _sl_empty(saved.get('bed') if saved.get('bed') in dict(BEDS) else default)
+        cfg['plate'] = bool(saved.get('plate'))
+        for proxy, keys in _ref_entities(design, b, saved):
+            for key in keys:
+                if key == 'sl_face':
+                    cfg['face'] = proxy
+                elif key in cfg:
+                    cfg[key].append(proxy)
     return out
 
 
@@ -1487,19 +1564,34 @@ def _sl_store(design, current_cfg):
     for i in sorted(touched):
         body, cfg = _sl_state['bodies'][i][1], cfgs[i]
         if body.isValid:
-            _sl_store_one(body, cfg, old_roles)
+            _sl_store_one(design, body, cfg, old_roles)
 
 
-def _sl_store_one(body, cfg, old_roles):
-    """Guarda en el diseño lo elegido para un cuerpo (cfg), en sus objetos nativos. old_roles: los atributos de papel
-    del diseño leídos antes de cambiar nada; se borran los de este cuerpo."""
+def _sl_store_one(design, body, cfg, old_roles):
+    """Guarda en el diseño lo elegido para un cuerpo (cfg), en sus objetos nativos; el de un componente referenciado,
+    en el diseño (ATTR_REFS). old_roles: los atributos de papel del diseño leídos antes de cambiar nada; se borran
+    los de este cuerpo."""
+    chosen = [('sl_face', [cfg['face']] if cfg['face'] and cfg['bed'] == 'face' else [])]
+    if _foreign(body):
+        roles = {}
+        for key, ents in chosen + [(k, cfg[k]) for k in ROLE_KEYS]:
+            for e in ents:
+                if e.isValid:
+                    roles.setdefault(e.entityToken, []).append(key)
+        refs = _ref_read(design)
+        if roles or cfg['plate'] or cfg['bed'] != _default_bed():
+            refs[_ref_key(body)] = {'bed': cfg['bed'], 'plate': cfg['plate'],
+                                    'roles': [[t, S.role_value(keys)] for t, keys in roles.items()]}
+        else:
+            refs.pop(_ref_key(body), None)
+        _ref_write(design, refs)
+        return
     native = body.nativeObject or body
     token = native.entityToken
     for a in old_roles:
         if a.isValid and a.parent and a.parent.body.entityToken == token:
             a.deleteMe()
     marks = {}
-    chosen = [('sl_face', [cfg['face']] if cfg['face'] and cfg['bed'] == 'face' else [])]
     for key, ents in chosen + [(k, cfg[k]) for k in ROLE_KEYS]:
         for e in ents:
             if e.isValid:
@@ -1520,6 +1612,36 @@ def _same_body(entity, body):
         return entity.body.entityToken == body.entityToken
     except Exception:
         return False
+
+
+def _sl_isolate(design, body):
+    """Apaga todo lo que no es el cuerpo, solo en la vista previa: Fusion lo vuelve a encender al rehacerla y al
+    cerrar el diálogo. Se apagan las ocurrencias que no llevan al cuerpo y, en el raíz y en las que sí, los demás
+    cuerpos. No se apaga el cuerpo nativo de otra ocurrencia del mismo componente, que apagaría también este."""
+    path = set()
+    occ = body.assemblyContext
+    while occ:
+        path.add(occ.fullPathName)
+        occ = occ.assemblyContext
+
+    def others(bodies):
+        for b in list(bodies):
+            if b.isLightBulbOn and b.entityToken != body.entityToken:
+                b.isLightBulbOn = False
+
+    def walk(occurrences):
+        for o in list(occurrences):
+            if o.fullPathName in path:
+                others(o.bRepBodies)
+                others(o.meshBodies)
+                walk(o.childOccurrences)
+            elif o.isLightBulbOn:
+                o.isLightBulbOn = False
+
+    root = design.rootComponent
+    others(root.bRepBodies)
+    others(root.meshBodies)
+    walk(root.occurrences)
 
 
 def _to_root(body):
@@ -1954,8 +2076,8 @@ class _SlCreatedHandler(adsk.core.CommandCreatedEventHandler):
             # anterior, que podría acabar en otro papel
             _ui.activeSelections.clear()
             _clear(API_GROUP_ID)   # lo que pintó show(): el diálogo pinta lo suyo y lo que cambie dejaría de valer
-            cmd.okButtonText = tr('Enviar')
-            cmd.cancelButtonText = tr('Cerrar')
+            cmd.okButtonText = tr('Cerrar')   # guarda lo elegido; Enviar es un botón del diálogo
+            cmd.cancelButtonText = tr('Cancelar')
             cmd.setDialogInitialSize(380, 640)
             cmd.setDialogMinimumSize(380, 300)
             inputs = cmd.commandInputs
@@ -1977,6 +2099,8 @@ class _SlCreatedHandler(adsk.core.CommandCreatedEventHandler):
             _sl_state['cfgs'] = _sl_load(design, bodies) if design else {}
             _sl_state['touched'] = set()
             _sl_state['current'] = names.index(last) if last is not None else None
+            solo = inputs.addBoolValueInput('sl_solo', tr('Ver solo este cuerpo'), True, '', s['sl_solo'])
+            solo.tooltip = tr('Mientras el diálogo está abierto, oculta todo lo demás. Al cerrarlo vuelve a verse.')
             plate = inputs.addBoolValueInput('sl_plate', tr('Incluir en la placa'), True, '', False)
             plate.tooltip = tr('Este cuerpo va en la placa. Lo elegido para cada cuerpo se guarda en el diseño.')
             dd = inputs.addDropDownCommandInput('sl_bed', tr('Cama'), adsk.core.DropDownStyles.TextListDropDownStyle)
@@ -2020,6 +2144,10 @@ class _SlCreatedHandler(adsk.core.CommandCreatedEventHandler):
             dd = inputs.addDropDownCommandInput('sl_open', tr('Abrir en'), adsk.core.DropDownStyles.TextListDropDownStyle)
             for key, label in OPEN_IN:
                 dd.listItems.add(tr(label), key == s['sl_open'])
+            btn = inputs.addBoolValueInput('sl_send', '', False, '', False)
+            btn.text = tr('Enviar')
+            btn.isFullWidth = True
+            btn.tooltip = tr('Guarda lo elegido, exporta y lanza slicer-paint, y cierra el diálogo.')
             btn = inputs.addBoolValueInput('sl_reset', '', False, '', False)
             btn.text = tr('Restablecer')
             btn.isFullWidth = True
@@ -2075,7 +2203,16 @@ class _SlPreviewHandler(adsk.core.CommandEventHandler):
         # caras de la base eran 69 vistas previas, cada una más lenta (dos minutos). Se pinta una vez al acabar.
         if _sl_state.get('loading'):
             return
-        _sl_draw(args.command.commandInputs)
+        inputs = args.command.commandInputs
+        _sl_draw(inputs)
+        body = _sl_body(inputs)
+        if body and inputs.itemById('sl_solo').value:
+            try:
+                _sl_isolate(adsk.fusion.Design.cast(_app.activeProduct), body)
+                # sin esto, al volver a marcar la casilla el navegador ya lo tiene apagado pero la vista no cambia
+                _app.activeViewport.refresh()
+            except Exception:
+                pass   # verlo todo no impide trabajar
 
 
 class _SlChangedHandler(adsk.core.InputChangedEventHandler):
@@ -2087,6 +2224,10 @@ class _SlChangedHandler(adsk.core.InputChangedEventHandler):
         inputs = args.firingEvent.sender.commandInputs
         if args.input.id == 'sl_reset':
             _sl_ask_reset()
+            return
+        if args.input.id == 'sl_send':
+            _sl_state['send'] = True
+            args.firingEvent.sender.doExecute(True)   # como pulsar Cerrar, pero enviando (_SlExecuteHandler)
             return
         try:
             if args.input.id == 'sl_body':
@@ -2132,6 +2273,9 @@ def _sl_reset(design):
             if a.isValid:
                 a.deleteMe()
                 gone += 1
+    refs = _ref_read(design)
+    gone += sum(1 + len(r.get('roles', [])) for r in refs.values())
+    _ref_write(design, {})
     _save_settings(_sl_defaults())
     return gone
 
@@ -2173,6 +2317,12 @@ class _SlExecuteHandler(adsk.core.CommandEventHandler):
         try:
             design = adsk.fusion.Design.cast(_app.activeProduct)
             inputs = args.command.commandInputs
+            if not _sl_state.pop('send', False):
+                # Cerrar: solo guarda lo elegido (Cancelar lo descarta)
+                _save_settings(_sl_read(inputs))
+                if design and _sl_state.get('bodies'):
+                    _sl_store(design, _sl_cfg_read(inputs))
+                return
             msg = _sl_send(design, _sl_read(inputs), inputs)
             _sl_state['sent'] = msg
             if msg:
@@ -2187,7 +2337,7 @@ class _SlDestroyHandler(adsk.core.CommandEventHandler):
             if _sl_state.get('cmd') is not None and args.command != _sl_state['cmd']:
                 return   # se ha vuelto a pulsar el botón con el diálogo abierto: el nuevo ya está en marcha
             _clear(SL_GROUP_ID)
-            for k in ('cmd', 'html', 'cfgs', 'touched', 'current', 'bodies', 'shown'):
+            for k in ('cmd', 'html', 'cfgs', 'touched', 'current', 'bodies', 'shown', 'send'):
                 _sl_state.pop(k, None)
             _app.activeViewport.refresh()
         except Exception:
@@ -2281,7 +2431,7 @@ def _api_cfg(design, name, body):
 
 
 def _api_store(design, body, cfg):
-    _sl_store_one(body, cfg, list(design.findAttributes(ATTR_GROUP, ATTR_ROLE)))
+    _sl_store_one(design, body, cfg, list(design.findAttributes(ATTR_GROUP, ATTR_ROLE)))
 
 
 def _api_refresh():
@@ -2311,6 +2461,13 @@ def _api_mm(p):
 
 
 def _api_roles_of(entity):
+    body = entity.body
+    if body.assemblyContext and _foreign(body):
+        design = _api_design()
+        saved = _ref_read(design).get(_ref_key(body)) or {}
+        token = _native_token(entity)
+        keys = next((k for e, k in _ref_entities(design, body, saved) if _native_token(e) == token), [])
+        return [P.role_name(k) for k in keys]
     a = (entity.nativeObject or entity).attributes.itemByName(ATTR_GROUP, ATTR_ROLE)
     return [P.role_name(k) for k in S.role_keys(a.value)] if a else []
 

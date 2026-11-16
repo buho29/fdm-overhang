@@ -138,6 +138,7 @@ En la vista de ensamblaje, las mismas piezas salen montadas como en Fusion: el s
 |---|---|
 | Enviar | *Este cuerpo*, en su propio 3MF, o *Varios en una placa*: todos los marcados con *Incluir en la placa*, en un solo 3MF |
 | Cuerpo | El cuerpo que se ve y se configura. Los que van en la placa llevan ✔ |
+| Ver solo este cuerpo | Mientras el diálogo está abierto, oculta todo lo demás, para ver bien el cuerpo elegido. Al cerrarlo vuelve a verse todo. Marcada por defecto |
 | Incluir en la placa | Este cuerpo entra en la placa |
 | Cama | *Plano XY (Z arriba)*, *Plano XZ (Y arriba)* o *Cara plana elegida*, que se elige en *Cara sobre la cama* |
 | Costura: Forzar en / Prohibir en | Aristas o caras donde poner la costura, o donde no puede ir. Una arista solo vale para forzarla si sube respecto a las capas |
@@ -145,11 +146,12 @@ En la vista de ensamblaje, las mismas piezas salen montadas como en Fusion: el s
 | Colores (AMS) | Pinta cada cara con el filamento de su color, según los aspectos de Fusion. Cada color distinto va a un filamento: el del primer cuerpo es el 1 y los demás, por orden de aparición, también entre los cuerpos de una placa. La lista de colores y filamentos sale en *Resultado*. El proyecto lleva un filamento por color, con su color: al imprimir, empareja cada uno con una bobina del AMS. Con varios cuerpos de distinto color, cada color de cuerpo va en su placa |
 | Malla del STL | Separación máxima entre los triángulos y la superficie: de *Baja (0,05 mm)* a *Muy alta (0,003 mm)*. *Alta* basta para imprimir; con más, la pieza tarda más en procesarse y en abrirse |
 | Abrir en | *OrcaSlicer*, *Bambu Studio* o *No abrir*. El 3MF se prepara para el laminador elegido: cada uno necesita el suyo |
+| Enviar | Guarda lo elegido, exporta y lanza slicer-paint, y cierra el diálogo (ver abajo) |
 | Restablecer | Pregunta antes y borra lo elegido en todos los cuerpos del diseño (cama, placa, costura y soportes), vuelve las opciones a sus valores por defecto y abre el diálogo de nuevo, vacío |
 
-Mientras el diálogo está abierto, lo elegido se pinta encima del modelo: costura forzada en cian, prohibida en naranja, soportes forzados en verde y bloqueados en rojo. Lo elegido para cada cuerpo se guarda en el diseño y vuelve al abrir el diálogo, también después de cerrar y abrir el archivo.
+Mientras el diálogo está abierto, lo elegido se pinta encima del modelo: costura forzada en cian, prohibida en naranja, soportes forzados en verde y bloqueados en rojo. Lo elegido para cada cuerpo se guarda en el diseño al pulsar **Cerrar** o **Enviar**, y vuelve al abrir el diálogo, también después de cerrar y abrir el archivo. **Cancelar** lo descarta. Los cuerpos de un componente referenciado (de otro archivo) guardan lo suyo en el diseño que estás editando, no en el otro archivo.
 
-Al pulsar **Enviar** se elige dónde guardar el 3MF. Al lado quedan el STL y el archivo de pieza de cada cuerpo, el log de slicer-paint y, con varios cuerpos, el archivo de placa. Mientras slicer-paint trabaja, Fusion sigue libre. Al acabar, se abre el laminador, o un aviso si algo falla.
+Al pulsar el botón **Enviar** se elige dónde guardar el 3MF. Al lado quedan el STL y el archivo de pieza de cada cuerpo, el log de slicer-paint y, con varios cuerpos, el archivo de placa. Mientras slicer-paint trabaja, Fusion sigue libre. Al acabar, se abre el laminador, o un aviso si algo falla.
 
 - **Necesita [slicer-paint](#slicer-paint-para-enviar-al-laminador)**, que orienta la pieza, pinta la costura y los soportes y escribe el 3MF. Sin él, solo se guardan el STL y el archivo de pieza, con la orden para generar el 3MF a mano.
 - **Varios cuerpos:** cada uno se orienta con su propia cama y lleva lo suyo. Se colocan en filas sobre la cama, buscando el conjunto más cuadrado, y si no caben, se avisa para ordenarlos en el laminador. Con *Colores (AMS)*, va una placa por color de cuerpo. En la vista de ensamblaje del laminador salen montados, como en Fusion. En Bambu Studio llevan además una guía de montaje, con el montaje final de todos, para añadir allí los pasos, las uniones y las notas.

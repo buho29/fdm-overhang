@@ -224,6 +224,9 @@ EN = {
     'tenga elegido.':
         'One body in its own 3MF, or several on a single plate: those marked with Include on the plate, each with '
         'what was chosen for it.',
+    'Ver solo este cuerpo': 'Show only this body',
+    'Mientras el diálogo está abierto, oculta todo lo demás. Al cerrarlo vuelve a verse.':
+        'While the dialog is open, hides everything else. It shows again when the dialog closes.',
     'Incluir en la placa': 'Include on the plate',
     'Este cuerpo va en la placa. Lo elegido para cada cuerpo se guarda en el diseño.':
         'This body goes on the plate. What you choose for each body is saved in the design.',
@@ -237,6 +240,8 @@ EN = {
     'Guardados la placa %s y sus piezas.\n\nSin slicer-paint. Para generar el 3MF, ejecútalo a mano:\n%s':
         'Saved the plate %s and its parts.\n\nNo slicer-paint. To build the 3MF, run it by hand:\n%s',
     'Restablecer': 'Reset',
+    'Guarda lo elegido, exporta y lanza slicer-paint, y cierra el diálogo.':
+        'Saves what was chosen, exports, runs slicer-paint and closes the dialog.',
     'Borra lo elegido en todos los cuerpos de este diseño (cama, placa, costura y soportes) y vuelve las opciones a '
     'sus valores por defecto.':
         'Clears what was chosen on every body of this design (bed, plate, seam and supports) and sets the options '

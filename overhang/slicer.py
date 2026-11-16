@@ -275,9 +275,15 @@ def write_stl(path, coords_cm, indices):
 
 
 def bounds_match(stl_box, body_box_cm, tol_mm=0.2):
-    """Si la caja del STL (mm) es la del cuerpo (cm, en coordenadas del raíz): si no, las zonas no caerían sobre la
-    malla. Lo que se busca es otro origen o cm en vez de mm; la tolerancia es porque la caja del cuerpo puede ser
-    algo mayor que la de su malla en las caras curvas."""
+    """Si la caja del STL (mm) cuadra con la del cuerpo (cm, en coordenadas del raíz): si no, las zonas no caerían
+    sobre la malla. Lo que se busca es otro origen o cm en vez de mm. No se exige que sean iguales: la caja que da
+    Fusion de un cuerpo con caras curvas puede ser bastante mayor que la pieza (1,5 mm por lado en un disco de
+    30 mm). Así que basta con que la del STL quede dentro y ocupe al menos la mitad en cada eje."""
     lo, hi = stl_box
     blo, bhi = [[v * MM_PER_CM for v in p] for p in body_box_cm]
-    return all(abs(a - b) <= tol_mm for a, b in zip(list(lo) + list(hi), blo + bhi))
+    for i in range(3):
+        if lo[i] < blo[i] - tol_mm or hi[i] > bhi[i] + tol_mm:
+            return False
+        if hi[i] - lo[i] < (bhi[i] - blo[i]) / 2 - tol_mm:
+            return False
+    return True
