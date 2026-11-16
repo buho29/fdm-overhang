@@ -137,7 +137,7 @@ En la vista de ensamblaje, las mismas piezas salen montadas como en Fusion: el s
 | Campo | Qué hace |
 |---|---|
 | Enviar | *Este cuerpo*, en su propio 3MF, o *Varios en una placa*: todos los marcados con *Incluir en la placa*, en un solo 3MF |
-| Cuerpo | El cuerpo que se ve y se configura. Los que van en la placa llevan ✔ |
+| Cuerpo | El cuerpo que se ve y se configura. Los que van en la placa llevan ✔. Al elegirlo, la vista se acerca a él sin girar; al cerrar el diálogo vuelve la vista de antes |
 | Ver solo este cuerpo | Mientras el diálogo está abierto, oculta todo lo demás, para ver bien el cuerpo elegido. Al cerrarlo vuelve a verse todo. Marcada por defecto |
 | Incluir en la placa | Este cuerpo entra en la placa |
 | Cama | *Plano XY (Z arriba)*, *Plano XZ (Y arriba)* o *Cara plana elegida*, que se elige en *Cara sobre la cama* |

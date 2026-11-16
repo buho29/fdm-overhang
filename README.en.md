@@ -137,7 +137,7 @@ In the assembly view, the same parts appear put together as in Fusion: the worm 
 | Field | What it does |
 |---|---|
 | Send | *This body*, in its own 3MF, or *Several on one plate*: all those ticked with *Include on the plate*, in a single 3MF |
-| Body | The body being shown and set up. Those on the plate are marked with ✔ |
+| Body | The body being shown and set up. Those on the plate are marked with ✔. Choosing it zooms the view to it without rotating; closing the dialog brings back the previous view |
 | Show only this body | While the dialog is open, hides everything else so the chosen body is easy to see. Everything shows again when it closes. Ticked by default |
 | Include on the plate | This body goes on the plate |
 | Bed | *XY plane (Z up)*, *XZ plane (Y up)* or *Selected planar face*, chosen in *Face on the bed* |

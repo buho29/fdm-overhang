@@ -1644,6 +1644,29 @@ def _sl_isolate(design, body):
     walk(root.occurrences)
 
 
+def _sl_zoom(body):
+    """Acerca la cámara al cuerpo sin girarla: misma dirección de vista, centrada en su caja y a la distancia
+    en la que cabe entero. La cámara no es parte del diseño: Fusion no la repone al rehacer la vista previa."""
+    box = body.boundingBox   # de un proxy, ya en coordenadas del raíz
+    lo, hi = box.minPoint, box.maxPoint
+    center = adsk.core.Point3D.create((lo.x + hi.x) / 2, (lo.y + hi.y) / 2, (lo.z + hi.z) / 2)
+    radius = max(lo.distanceTo(hi) / 2, 0.1)
+    vp = _app.activeViewport
+    cam = vp.camera
+    look = cam.target.vectorTo(cam.eye)
+    look.normalize()
+    angle = cam.perspectiveAngle if cam.perspectiveAngle > 0.01 else math.radians(30)
+    look.scaleBy(radius * 1.15 / math.sin(angle / 2))   # la esfera de la caja cabe en el cono de la vista
+    eye = center.copy()
+    eye.translateBy(look)
+    cam.target = center
+    cam.eye = eye
+    cam.viewExtents = radius * 1.15   # en ortográfica manda esto, no la distancia
+    cam.isFitView = False
+    cam.isSmoothTransition = True
+    vp.camera = cam
+
+
 def _to_root(body):
     """Matriz (Matrix3D.asArray) que lleva del componente del cuerpo al raíz, o None."""
     return body.assemblyContext.transform2.asArray() if body.assemblyContext else None
@@ -2099,6 +2122,7 @@ class _SlCreatedHandler(adsk.core.CommandCreatedEventHandler):
             _sl_state['cfgs'] = _sl_load(design, bodies) if design else {}
             _sl_state['touched'] = set()
             _sl_state['current'] = names.index(last) if last is not None else None
+            _sl_state['zoom'] = True   # al abrir, la cámara va al cuerpo que se ve (_SlPreviewHandler)
             solo = inputs.addBoolValueInput('sl_solo', tr('Ver solo este cuerpo'), True, '', s['sl_solo'])
             solo.tooltip = tr('Mientras el diálogo está abierto, oculta todo lo demás. Al cerrarlo vuelve a verse.')
             plate = inputs.addBoolValueInput('sl_plate', tr('Incluir en la placa'), True, '', False)
@@ -2213,6 +2237,12 @@ class _SlPreviewHandler(adsk.core.CommandEventHandler):
                 _app.activeViewport.refresh()
             except Exception:
                 pass   # verlo todo no impide trabajar
+        if body and _sl_state.pop('zoom', False):
+            try:
+                _sl_state.setdefault('camera', _app.activeViewport.camera)   # la de antes del diálogo
+                _sl_zoom(body)
+            except Exception:
+                pass
 
 
 class _SlChangedHandler(adsk.core.InputChangedEventHandler):
@@ -2238,6 +2268,7 @@ class _SlChangedHandler(adsk.core.InputChangedEventHandler):
                     _sl_state['touched'].add(prev)
                 _sl_state['current'] = new
                 if new is not None and new != prev:
+                    _sl_state['zoom'] = True
                     _sl_cfg_show(inputs, _sl_state['cfgs'].get(new) or _sl_empty(_load_settings()['sl_bed']))
             elif args.input.id == 'sl_what' and _choice(inputs, 'sl_what', SL_WHAT) == 'plate':
                 if not _sl_plate(inputs):
@@ -2337,8 +2368,11 @@ class _SlDestroyHandler(adsk.core.CommandEventHandler):
             if _sl_state.get('cmd') is not None and args.command != _sl_state['cmd']:
                 return   # se ha vuelto a pulsar el botón con el diálogo abierto: el nuevo ya está en marcha
             _clear(SL_GROUP_ID)
-            for k in ('cmd', 'html', 'cfgs', 'touched', 'current', 'bodies', 'shown', 'send'):
+            for k in ('cmd', 'html', 'cfgs', 'touched', 'current', 'bodies', 'shown', 'send', 'zoom'):
                 _sl_state.pop(k, None)
+            camera = _sl_state.pop('camera', None)
+            if camera:
+                _app.activeViewport.camera = camera   # como ver solo el cuerpo, el acercamiento dura lo que el diálogo
             _app.activeViewport.refresh()
         except Exception:
             pass
