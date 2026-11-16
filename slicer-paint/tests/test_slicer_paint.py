@@ -907,6 +907,45 @@ def test_arrange_reports_parts_that_do_not_fit():
     assert plate.arrange([(235.0, 235.0)], excluded=None)[1]
 
 
+def _apart(centers, sizes, i, j):
+    """Hueco entre las huellas de dos piezas (en el eje en que están separadas)."""
+    return (np.abs(np.subtract(centers[i], centers[j])) - np.add(sizes[i], sizes[j]) / 2).max()
+
+
+def test_arrange_leaves_room_for_supports():
+    sizes = [(60.0, 60.0), (60.0, 60.0)]
+    margin = plate.SUPPORT_MARGIN_MM
+    for margins, expected in (([margin, 0.0], plate.PART_GAP_MM + margin),
+                              ([margin, margin], plate.PART_GAP_MM + 2 * margin)):
+        centers, fits = plate.arrange(sizes, margins=margins)
+        assert fits and _apart(centers, sizes, 0, 1) == pytest.approx(expected)
+    # sin soportes, como siempre
+    assert plate.arrange(sizes, margins=[0.0] * 3) == plate.arrange(sizes)
+
+
+def test_arrange_drops_the_support_room_if_it_does_not_fit():
+    sizes = [(120.0, 120.0)] * 4   # caben en 245 × 245, pero no con 10 mm por lado
+    centers, fits = plate.arrange(sizes, excluded=None, margins=[plate.SUPPORT_MARGIN_MM] * 4)
+    assert fits
+    assert (centers, fits) == plate.arrange(sizes, excluded=None)
+
+
+def test_support_room_with_supports_or_overhang():
+    from types import SimpleNamespace
+    flat = SimpleNamespace(chosen=SimpleNamespace(overhang_area=0.0))
+    overhanging = SimpleNamespace(chosen=SimpleNamespace(overhang_area=cli.SUPPORT_OVERHANG_MM2 + 1))
+    assert not cli.support_room(flat, {}, False)
+    assert cli.support_room(flat, {"enable_support": "1"}, False)
+    assert cli.support_room(flat, {}, True)
+    assert cli.support_room(overhanging, {}, False)   # los soportes se activan luego en el laminador
+
+
+def test_supports_everywhere_reads_the_project():
+    assert cli.supports_everywhere(json.dumps({"enable_support": "1"}).encode())
+    assert not cli.supports_everywhere(json.dumps({"enable_support": "0"}).encode())
+    assert not cli.supports_everywhere(None)
+
+
 def _settings_by_object(path):
     root = ET.fromstring(zipfile.ZipFile(path).read("Metadata/model_settings.config"))
     return {obj.get("id"): {m.get("key"): m.get("value") for m in obj.findall("metadata") if m.get("key")}
@@ -968,9 +1007,9 @@ def test_cli_plate_paints_each_part_and_places_them_on_the_bed(tmp_path, capsys)
     for low, high in boxes:
         assert (low[:2] >= 0).all() and (high[:2] <= 256).all()
         assert low[2] == pytest.approx(0.0, abs=1e-5)
-    # Separadas 5 mm, una al lado o detrás de la otra.
+    # Una al lado o detrás de la otra, separadas 5 mm más el aire para los soportes del cono.
     apart = np.maximum(boxes[1][0][:2] - boxes[0][1][:2], boxes[0][0][:2] - boxes[1][1][:2])
-    assert apart.max() == pytest.approx(plate.PART_GAP_MM, abs=1e-4)
+    assert apart.max() == pytest.approx(plate.PART_GAP_MM + plate.SUPPORT_MARGIN_MM, abs=1e-4)
     assert _read_entry(out, "Metadata/model_settings.config").count("<plate>") == 1
 
 

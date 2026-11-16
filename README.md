@@ -32,6 +32,7 @@ Un soporte de móvil visto desde abajo: los dos puentes que no pasan de 23 mm sa
 | Campo | Qué hace |
 |---|---|
 | Cuerpos | *Todos los visibles* (también los de las ocurrencias y los de malla) o *Elegidos*. Al pulsar *Analizar*, el campo de selección se cambia por un botón con los nombres de los cuerpos, porque el resaltado azul de Fusion taparía la capa. Pulsándolo vuelve el campo con ellos, para quitar o añadir |
+| Ver solo los elegidos | Con *Elegidos*: al analizar, oculta todo lo demás y acerca la vista a esos cuerpos, sin girarla. Mientras se cambia la selección se ve todo, para poder elegir otros; al desmarcarla, la vista se aleja hasta que cabe todo. Al cerrar el diálogo vuelve todo como estaba, también la vista. Marcada por defecto |
 | Cama | *Plano XY (Z arriba)*, *Plano XZ (Y arriba)* o *Cara plana elegida*: la cara que irá sobre la cama, como el "colocar en cara" de los laminadores. Por defecto, según la orientación de modelado de Fusion. La cara elegida se guarda al cerrar con *Cerrar* como cama de su cuerpo en *Enviar al laminador* |
 | Cada cuerpo sobre la cama | Cada cuerpo se apoya en su punto más bajo. Sin marcar, la cama es el punto más bajo de todos (útil para un conjunto montado) |
 | Ángulo límite (°) | Medido desde la horizontal, como en PrusaSlicer y Orca: 45° para la mayoría de materiales; 30° si la impresora y el material lo aguantan |
@@ -67,7 +68,7 @@ El soporte de móvil con la escala de 0 a 4 mm y **Ver a través**: la pared cur
 | Pintar | *Mapa de color* o *Solo lo que no llega al mínimo* (en rojo) |
 | Escala desde / hasta | Medidas del rojo y del azul en el mapa de color. Cada medida guarda las suyas |
 | Resolución | Lado máximo de los triángulos con los que se mide: *Rápida (2 mm)*, *Normal (1 mm)* o *Fina (0,5 mm)*. En los cuerpos de malla (un STL) se parten sus triángulos hasta ese tamaño |
-| Ver a través | Pone los cuerpos medidos en transparencia mientras el diálogo está abierto, para ver lo que queda por dentro, con transparencia del 75 % o del 88 %. Al cerrar vuelven a su opacidad, también con *Mantener al cerrar* |
+| Ver a través | Pone los cuerpos medidos en transparencia mientras el diálogo está abierto, para ver lo que queda por dentro, con transparencia del 75 % o del 88 %. Al cerrar vuelven a su opacidad, también con *Mantener al cerrar*. Los de un componente referenciado (de otro archivo) no se ponen en transparencia: Fusion no les devuelve la opacidad al cerrar |
 | Capa | Con *Ver a través*: *Por encima* pinta la capa con su color vivo, pero Fusion la dibuja desordenada con los cuerpos transparentes y puede salir a trozos donde se mira a través de un cuerpo; *En su sitio* la pinta entera, tras los cuerpos, y por eso más pálida |
 | Mantener al cerrar | La capa se queda al cerrar el diálogo hasta que cambie alguno de los cuerpos o se vuelva a abrir el diálogo (fuera del diálogo no se puede recalcular). No se guarda en el archivo |
 

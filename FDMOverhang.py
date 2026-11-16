@@ -104,7 +104,7 @@ def _sl_defaults():
 
 def _load_settings():
     s = {'bodies': 'visible', 'bed': _default_bed(), 'own_bed': False, 'angle': 45, 'gradient': True,
-         'quality': 'normal', 'keep': False, 'bridge': True, 'bridge_max': 23.0,
+         'quality': 'normal', 'keep': False, 'bridge': True, 'bridge_max': 23.0, 'ov_solo': True,
          'th_bodies': 'visible', 'th_res': 'coarse', 'th_paint': 'map', 'th_limit': 0.8, 'th_lo': 0.0,
          'th_hi': 4.0, 'th_keep': False, 'th_mode': 'thickness', 'gap_limit': 0.1, 'gap_lo': 0.0, 'gap_hi': 2.0,
          'gap_others': True, 'th_xray': 'on', 'th_layer': 'inplace', 'sl_dir': '', 'slicer_paint': '', **_sl_defaults()}
@@ -165,7 +165,7 @@ def _read(inputs):
             'gradient': inputs.itemById('gradient').value, 'quality': _choice(inputs, 'quality', QUALITIES),
             'bridge': inputs.itemById('bridge').value,
             'bridge_max': round(inputs.itemById('bridge_max').value * 10, 4),   # mm
-            'keep': inputs.itemById('keep').value}
+            'keep': inputs.itemById('keep').value, 'ov_solo': inputs.itemById('ov_solo').value}
 
 
 def _visible_bodies(root):
@@ -248,6 +248,7 @@ def _update_visibility(inputs):
     if shown:
         names = [b.name for b in _state['picked'] if b.isValid]
         btn.text = ', '.join(names) if len(names) <= 2 else tr('%d cuerpos') % len(names)
+    inputs.itemById('ov_solo').isVisible = pick
     inputs.itemById('face_sel').isVisible = face
     inputs.itemById('bridge_max').isVisible = inputs.itemById('bridge').value
 
@@ -557,7 +558,7 @@ class _CreatedHandler(adsk.core.CommandCreatedEventHandler):
             _drop_keep()   # mientras el diálogo está abierto se ve la vista previa
             _state.pop('html', None)
             _state.pop('run', None)
-            for k in ('picked', 'editing', 'marks', 'geom'):
+            for k in ('picked', 'editing', 'marks', 'geom', 'zoom', 'camera'):
                 _state.pop(k, None)
             # Cerrar guarda los soportes marcados para el laminador (execute); Cancelar los descarta
             cmd.okButtonText = tr('Cerrar')
@@ -579,6 +580,10 @@ class _CreatedHandler(adsk.core.CommandCreatedEventHandler):
             # al analizar, el campo se vacía (el resaltado taparía la capa) y en su sitio sale este botón
             btn = inputs.addBoolValueInput('body_btn', tr('Selección'), False, '', False)
             btn.tooltip = tr('Los cuerpos analizados. Pulsa para cambiarlos.')
+            solo = inputs.addBoolValueInput('ov_solo', tr('Ver solo los elegidos'), True, '', bool(s['ov_solo']))
+            solo.tooltip = tr('Al analizar, oculta todo lo demás y acerca la vista a los cuerpos elegidos. Mientras '
+                              'los cambias se ve todo, para poder elegir otros. Al cerrar el diálogo vuelve a verse '
+                              'todo, como estaba.')
 
             dd = inputs.addDropDownCommandInput('bed', tr('Cama'), adsk.core.DropDownStyles.TextListDropDownStyle)
             for key, label in BEDS:
@@ -622,9 +627,36 @@ class _CreatedHandler(adsk.core.CommandCreatedEventHandler):
             _ui.messageBox(tr('Voladizos FDM: error') + '\n' + traceback.format_exc())
 
 
+def _ov_solo_bodies(inputs):
+    """Los cuerpos analizados que se ven solos (Ver solo los elegidos), o [] si se ve todo: con Todos los visibles,
+    y mientras se cambia la selección, para poder elegir otros."""
+    if not (inputs.itemById('ov_solo').value and _choice(inputs, 'bodies', BODIES) == 'pick'
+            and not _state.get('editing')):
+        return []
+    return [b for b in _state.get('picked') or [] if b.isValid]
+
+
 class _PreviewHandler(adsk.core.CommandEventHandler):
     def notify(self, args):
-        _draw(args.command.commandInputs)
+        inputs = args.command.commandInputs
+        bodies = _ov_solo_bodies(inputs)
+        if bodies:
+            # antes de pintar, como en Enviar al laminador: Fusion acaba de volver a encenderlo todo
+            try:
+                _sl_isolate(adsk.fusion.Design.cast(_app.activeProduct), bodies)
+            except Exception:
+                pass   # verlo todo no impide trabajar
+        _draw(inputs)
+        zoom = _state.pop('zoom', None)
+        if zoom:
+            try:
+                _state.setdefault('camera', _app.activeViewport.camera)   # la de antes del diálogo
+                if zoom == 'all':
+                    _app.activeViewport.fit()
+                elif bodies:
+                    _sl_zoom(bodies)
+            except Exception:
+                pass
 
 
 class _ExecuteHandler(adsk.core.CommandEventHandler):
@@ -661,6 +693,7 @@ class _ChangedHandler(adsk.core.InputChangedEventHandler):
             if _choice(inputs, 'bodies', BODIES) == 'pick' and (sel.selectionCount or _state.get('editing')):
                 _state['picked'] = [sel.selection(i).entity for i in range(sel.selectionCount)]
                 _state['editing'] = False   # antes de vaciar: la vista previa que lanza ya usa los recordados
+                _state['zoom'] = 'bodies'   # si se ven solos, la vista va a ellos (_PreviewHandler)
                 sel.clearSelection()
                 _update_visibility(inputs)
             return
@@ -678,6 +711,8 @@ class _ChangedHandler(adsk.core.InputChangedEventHandler):
         if args.input.id == 'ov_add_over':
             _ov_add_overhangs(inputs)
             return
+        if args.input.id == 'ov_solo':
+            _state['zoom'] = 'bodies' if args.input.value else 'all'
         _update_visibility(inputs)
         if args.input.id == 'bodies' and _choice(inputs, 'bodies', BODIES) == 'pick':
             inputs.itemById('body_sel').hasFocus = True
@@ -694,6 +729,10 @@ class _DestroyHandler(adsk.core.CommandEventHandler):
             _meshes.clear()
             _state.pop('cmd', None)
             _state.pop('html', None)
+            _state.pop('zoom', None)
+            camera = _state.pop('camera', None)
+            if camera:
+                _app.activeViewport.camera = camera   # el acercamiento dura lo que el diálogo
             last = _state.pop('last', None)
             if last and last['settings'].get('keep') and last['design']:
                 _keep.update(last)
@@ -1145,9 +1184,12 @@ def _th_draw(inputs):
             opacity = dict((k, o) for k, _, o in XRAY)[last['settings']['th_xray']] if last else None
             _paint(design, layers, TH_GROUP_ID, solid=opacity is not None and last['settings']['th_layer'] == 'inplace')
             if opacity is not None:
-                # dentro de la vista previa: Fusion devuelve la opacidad de cada cuerpo al cambiar un campo y al cerrar
+                # dentro de la vista previa: Fusion devuelve la opacidad de cada cuerpo al cambiar un campo y al cerrar.
+                # Menos en los de un componente referenciado: la opacidad es del cuerpo en su archivo, que Fusion no
+                # deshace (medido: se quedaban transparentes y el otro archivo, modificado). Esos no se tocan.
                 for b in bodies:
-                    b.opacity = opacity
+                    if not _foreign(b):
+                        b.opacity = opacity
         _app.activeViewport.refresh()
     finally:
         busy = _th_state.pop('busy', None)
@@ -1615,19 +1657,22 @@ def _same_body(entity, body):
         return False
 
 
-def _sl_isolate(design, body):
-    """Apaga todo lo que no es el cuerpo, solo en la vista previa: Fusion lo vuelve a encender al rehacerla y al
-    cerrar el diálogo. Se apagan las ocurrencias que no llevan al cuerpo y, en el raíz y en las que sí, los demás
-    cuerpos. No se apaga el cuerpo nativo de otra ocurrencia del mismo componente, que apagaría también este."""
-    path = set()
-    occ = body.assemblyContext
-    while occ:
-        path.add(occ.fullPathName)
-        occ = occ.assemblyContext
+def _sl_isolate(design, bodies):
+    """Apaga todo lo que no son los cuerpos, solo en la vista previa: Fusion lo vuelve a encender al rehacerla y al
+    cerrar el diálogo. Se apagan las ocurrencias que no llevan a ninguno y, en el raíz y en las que sí, los demás
+    cuerpos. No se apaga el cuerpo nativo de otra ocurrencia del mismo componente: la bombilla de un cuerpo es de su
+    componente, y apagaría también el elegido."""
+    path, keep = set(), set()
+    for body in bodies:
+        keep.add((body.nativeObject or body).entityToken)
+        occ = body.assemblyContext
+        while occ:
+            path.add(occ.fullPathName)
+            occ = occ.assemblyContext
 
-    def others(bodies):
-        for b in list(bodies):
-            if b.isLightBulbOn and b.entityToken != body.entityToken:
+    def others(found):
+        for b in list(found):
+            if b.isLightBulbOn and (b.nativeObject or b).entityToken not in keep:
                 b.isLightBulbOn = False
 
     def walk(occurrences):
@@ -1645,10 +1690,17 @@ def _sl_isolate(design, body):
     walk(root.occurrences)
 
 
-def _sl_zoom(body):
-    """Acerca la cámara al cuerpo sin girarla: misma dirección de vista, centrada en su caja y a la distancia
-    en la que cabe entero. La cámara no es parte del diseño: Fusion no la repone al rehacer la vista previa."""
-    box = body.boundingBox   # de un proxy, ya en coordenadas del raíz
+def _sl_zoom(bodies):
+    """Acerca la cámara a los cuerpos sin girarla: misma dirección de vista, centrada en su caja y a la distancia
+    en la que caben enteros. La cámara no es parte del diseño: Fusion no la repone al rehacer la vista previa."""
+    box = None
+    for b in bodies:   # de un proxy, la caja ya está en coordenadas del raíz
+        if box is None:
+            box = b.boundingBox.copy()
+        else:
+            box.combine(b.boundingBox)
+    if box is None:
+        return
     lo, hi = box.minPoint, box.maxPoint
     center = adsk.core.Point3D.create((lo.x + hi.x) / 2, (lo.y + hi.y) / 2, (lo.z + hi.z) / 2)
     radius = max(lo.distanceTo(hi) / 2, 0.1)
@@ -2274,7 +2326,7 @@ class _SlPreviewHandler(adsk.core.CommandEventHandler):
         # mientras tanto
         if body and inputs.itemById('sl_solo').value:
             try:
-                _sl_isolate(adsk.fusion.Design.cast(_app.activeProduct), body)
+                _sl_isolate(adsk.fusion.Design.cast(_app.activeProduct), [body])
             except Exception:
                 pass   # verlo todo no impide trabajar
         _sl_draw(inputs)
@@ -2287,7 +2339,7 @@ class _SlPreviewHandler(adsk.core.CommandEventHandler):
                 if zoom == 'all':
                     _app.activeViewport.fit()   # ya se ve todo: que quepa
                 elif body:
-                    _sl_zoom(body)
+                    _sl_zoom([body])
             except Exception:
                 pass
 

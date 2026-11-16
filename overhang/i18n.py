@@ -241,6 +241,11 @@ EN = {
         'Saved the plate %s and its parts.\n\nNo slicer-paint. To build the 3MF, run it by hand:\n%s',
     'Restablecer': 'Reset',
     'Opciones generales': 'General options',
+    'Ver solo los elegidos': 'Show only the chosen ones',
+    'Al analizar, oculta todo lo demás y acerca la vista a los cuerpos elegidos. Mientras los cambias se ve todo, '
+    'para poder elegir otros. Al cerrar el diálogo vuelve a verse todo, como estaba.':
+        'When analysing, hides everything else and zooms the view to the chosen bodies. While you change them '
+        'everything shows, so you can pick others. Closing the dialog shows everything again, as it was.',
     'Valen para todos los cuerpos y todos los diseños.': 'They apply to every body and every design.',
     'Borra lo elegido en todos los cuerpos de este diseño (cama, placa, costura y soportes) y vuelve las opciones a '
     'sus valores por defecto.':

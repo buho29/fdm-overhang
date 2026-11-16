@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import glob
+import json
 import os
 import subprocess
 import sys
@@ -21,6 +22,8 @@ ORCA_PATHS = [
     os.path.expanduser(r"~\Desktop\OrcaSlicer_nightly_portable\OrcaSlicer\orca-slicer.exe"),
 ]
 BAMBU_PATHS = [r"C:\Program Files\Bambu Studio\bambu-studio.exe"]
+# Voladizo (mm², ya orientada) a partir del que una pieza se coloca con aire para soportes.
+SUPPORT_OVERHANG_MM2 = 5.0
 
 
 def find_slicer(kind: str) -> str:
@@ -318,6 +321,24 @@ def color_summary(part: PreparedPart) -> str:
     return "; ".join(text)
 
 
+def supports_everywhere(project_settings: bytes | None) -> bool:
+    """Si los ajustes del proyecto activan los soportes en todas las piezas."""
+    if not project_settings:
+        return False
+    try:
+        return json.loads(project_settings).get("enable_support") == "1"
+    except (ValueError, AttributeError):
+        return False
+
+
+def support_room(part: PreparedPart, settings: dict[str, str], everywhere: bool) -> bool:
+    """Si hay que dejar aire alrededor de la pieza para sus soportes: si los lleva activados (por
+    pintura, por lo conservado o por el proyecto) o si tiene voladizo, porque los soportes se
+    suelen activar después en el laminador, y los de árbol se abren fuera de la pieza."""
+    return (everywhere or settings.get("enable_support") == "1"
+            or part.chosen.overhang_area > SUPPORT_OVERHANG_MM2)
+
+
 def assembled(parts: list[PreparedPart]) -> list[np.ndarray | None]:
     """Sitio de cada pieza en la vista de ensamblaje: como en sus STL, con el conjunto centrado en
     la cama de la placa 1 y apoyado en Z=0. Con una sola pieza no hay ensamblaje."""
@@ -378,11 +399,17 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Error: {exc}", file=sys.stderr)
         return 2
 
+    kept_objects = previous.objects if previous else {}
+    settings = [part_settings(args, p, kept_objects.get(p.name)) for p in parts]
+    everywhere = supports_everywhere(project_settings)
+    margins = [plate.SUPPORT_MARGIN_MM if support_room(p, s, everywhere) else 0.0
+               for p, s in zip(parts, settings)]
     groups = plate_groups(parts)
     placed: dict[int, tuple[int, tuple[float, float]]] = {}
     crowded = []
     for number, (filament, members) in enumerate(groups, 1):
-        centers, fits = plate.arrange([tuple(parts[i].oriented.extents[:2]) for i in members])
+        centers, fits = plate.arrange([tuple(parts[i].oriented.extents[:2]) for i in members],
+                                      margins=[margins[i] for i in members])
         placed.update({i: (number, center) for i, center in zip(members, centers)})
         if not fits:
             crowded.append(number)
@@ -394,10 +421,9 @@ def main(argv: list[str] | None = None) -> int:
         if not values.get("plater_name"):
             values["plater_name"] = name
     output.parent.mkdir(parents=True, exist_ok=True)
-    kept_objects = previous.objects if previous else {}
     assembly = assembled(parts)
     write_plate(output, [PlateObject(p.oriented.vertices, p.oriented.faces, p.support, p.seam,
-                                     p.name, part_settings(args, p, kept_objects.get(p.name)),
+                                     p.name, settings[i],
                                      placed[i][1], p.color, placed[i][0], assembly[i])
                          for i, p in enumerate(parts)], project_settings,
                 metadata=metadata,

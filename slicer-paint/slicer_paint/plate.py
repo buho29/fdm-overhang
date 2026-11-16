@@ -16,6 +16,8 @@ PLATE_VERSION = 1
 P1S_BED_SIZE = (256.0, 256.0)
 P1S_EXCLUDED = ((0.0, 0.0), (18.0, 28.0))
 PART_GAP_MM = 5.0
+# Aire de más por lado alrededor de una pieza con soportes: los de árbol se abren fuera de su huella.
+SUPPORT_MARGIN_MM = 10.0
 _PLATE_KEYS = {"version", "units", "parts"}
 _PART_KEYS = {"stl", "fusion", "name"}
 
@@ -73,6 +75,7 @@ def load_plate(path: str | Path) -> list[PlatePart]:
 def arrange(sizes: list[tuple[float, float]], bed_size: tuple[float, float] = P1S_BED_SIZE,
             gap: float = PART_GAP_MM,
             excluded: tuple[tuple[float, float], tuple[float, float]] | None = P1S_EXCLUDED,
+            margins: list[float] | None = None,
             ) -> tuple[list[tuple[float, float]], bool]:
     """Coloca en filas piezas de ancho × fondo dados y devuelve el centro de cada una (en el orden
     recibido) y si caben.
@@ -82,7 +85,21 @@ def arrange(sizes: list[tuple[float, float]], bed_size: tuple[float, float] = P1
     menor lado mayor y, si empatan, el de menos área. Cada fila se centra en X y el conjunto se
     centra en la cama, así que una sola pieza queda en el centro. Si no caben, se colocan en filas
     tan anchas como la cama y se devuelve False.
+
+    margins: aire de más alrededor de cada pieza (mm por lado), para los soportes que salen de su
+    huella, como los de árbol. Entre dos piezas queda gap más el de las dos. Si con ese aire no
+    caben, se colocan sin él.
     """
+    if margins and any(margins):
+        grown = [(w + 2 * m, d + 2 * m) for (w, d), m in zip(sizes, margins)]
+        centers, fits = _arrange(grown, bed_size, gap, excluded)
+        # el aire puede salirse de la cama: solo cuenta que quepan las piezas
+        if _fits(sizes, centers, bed_size, excluded):
+            return centers, True
+    return _arrange(sizes, bed_size, gap, excluded)
+
+
+def _arrange(sizes, bed_size, gap, excluded) -> tuple[list[tuple[float, float]], bool]:
     width, depth = bed_size
     order = sorted(range(len(sizes)), key=lambda i: (-sizes[i][1], -sizes[i][0]))
     widths = [sizes[i][0] for i in order]

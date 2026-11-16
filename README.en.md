@@ -32,6 +32,7 @@ A phone stand seen from below: the two bridges up to 23 mm are blue; the 30 mm o
 | Field | What it does |
 |---|---|
 | Bodies | *All visible* (including those in occurrences and mesh bodies) or *Selected*. When you press *Analyse*, the selection field turns into a button with the bodies' names, because Fusion's blue highlight would hide the layer. Pressing it brings the field back with them, to remove or add |
+| Show only the chosen ones | With *Selected*: when analysing, hides everything else and zooms the view to those bodies, without rotating it. While the selection is being changed everything shows, so others can be picked; unticking it zooms out until everything fits. Closing the dialog brings everything back as it was, the view too. Ticked by default |
 | Bed | *XY plane (Z up)*, *XZ plane (Y up)* or *Selected planar face*: the face that goes on the bed, like the slicers' "place on face". Defaults to Fusion's modeling orientation. The chosen face is saved, when you close with *Close*, as its body's bed in *Send to slicer* |
 | Each body on the bed | Each body rests on its own lowest point. Unchecked, the bed is the lowest point of all of them (useful for an assembly) |
 | Limit angle (°) | Measured from the horizontal, as in PrusaSlicer and Orca: 45° for most materials; 30° if the printer and material can handle it |
@@ -67,7 +68,7 @@ The phone stand with the scale from 0 to 4 mm and **See through**: the curved wa
 | Paint | *Colour map* or *Only what is below the minimum* (in red) |
 | Scale from / to | Values of the red and the blue in the colour map. Each measure keeps its own |
 | Resolution | Maximum side of the triangles used to measure: *Fast (2 mm)*, *Normal (1 mm)* or *Fine (0.5 mm)*. In mesh bodies (an STL) their triangles are split down to that size |
-| See through | Makes the measured bodies transparent while the dialog is open, to see what is inside, with 75 % or 88 % transparency. They go back to their opacity when it is closed, also with *Keep when closed* |
+| See through | Makes the measured bodies transparent while the dialog is open, to see what is inside, with 75 % or 88 % transparency. They go back to their opacity when it is closed, also with *Keep when closed*. Bodies of a referenced component (from another file) are not made transparent: Fusion does not give them their opacity back when it closes |
 | Layer | With *See through*: *On top* draws the layer in its bright colour, but Fusion draws it out of order with the transparent bodies and it may show in patches where you look through a body; *In place* draws it whole, behind the bodies, and therefore paler |
 | Keep when closed | The layer stays after closing the dialog until one of the bodies changes or the dialog is opened again (it cannot be recomputed outside the dialog). It is not saved in the file |
 
