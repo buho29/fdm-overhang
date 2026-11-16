@@ -240,8 +240,8 @@ EN = {
     'Guardados la placa %s y sus piezas.\n\nSin slicer-paint. Para generar el 3MF, ejecútalo a mano:\n%s':
         'Saved the plate %s and its parts.\n\nNo slicer-paint. To build the 3MF, run it by hand:\n%s',
     'Restablecer': 'Reset',
-    'Guarda lo elegido, exporta y lanza slicer-paint, y cierra el diálogo.':
-        'Saves what was chosen, exports, runs slicer-paint and closes the dialog.',
+    'Opciones generales': 'General options',
+    'Valen para todos los cuerpos y todos los diseños.': 'They apply to every body and every design.',
     'Borra lo elegido en todos los cuerpos de este diseño (cama, placa, costura y soportes) y vuelve las opciones a '
     'sus valores por defecto.':
         'Clears what was chosen on every body of this design (bed, plate, seam and supports) and sets the options '

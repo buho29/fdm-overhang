@@ -50,6 +50,7 @@ SL_GROUP_ID = 'fdm_slicer'
 SL_DONE_EVENT = 'buhoFdmSlicerDone'
 SL_SHOW_EVENT = 'buhoFdmSlicerShow'
 SL_RESET_EVENT = 'buhoFdmSlicerReset'   # Restablecer: cierra el diálogo, borra y lo vuelve a abrir
+SL_SAVE_EVENT = 'buhoFdmSlicerSave'   # Cerrar: escribe lo elegido en el diseño cuando el diálogo ya se ha cerrado
 API_GROUP_ID = 'fdm_slicer_api'   # capa con lo marcado desde la API sin diálogo (show), fuera de cualquier comando
 API_SEND_EVENT = 'buhoFdmApiSend'  # send() de la API exporta desde aquí: execute_code corta a los 30 s
 SETTINGS = os.path.join(HERE, 'settings.json')
@@ -1843,11 +1844,48 @@ def _sl_paint(design, layers, lines, group_id=SL_GROUP_ID):
         ln.depthPriority = 2
 
 
+def _sl_sig(inputs):
+    """Lo que hay en el diálogo (valores y selecciones), sin lo que no cambia el resultado, como abrir un grupo."""
+    out = []
+
+    def walk(coll):
+        for i in range(coll.count):
+            inp = coll.item(i)
+            sel = adsk.core.SelectionCommandInput.cast(inp)
+            if sel:
+                out.append((inp.id, tuple(sel.selection(j).entity.entityToken for j in range(sel.selectionCount))))
+                continue
+            grp = adsk.core.GroupCommandInput.cast(inp)
+            if grp:
+                walk(grp.children)
+                continue
+            dd = adsk.core.DropDownCommandInput.cast(inp)
+            if dd:
+                out.append((inp.id, dd.selectedItem.name if dd.selectedItem else None))
+                continue
+            bv = adsk.core.BoolValueCommandInput.cast(inp)
+            if bv:
+                out.append((inp.id, bv.value))
+    walk(inputs)
+    return tuple(out)
+
+
 def _sl_draw(inputs):
-    """Como _draw: resultado y capa con lo que va a cada papel."""
+    """Como _draw: resultado y capa con lo que va a cada papel. Si en el diálogo no ha cambiado nada que cuente
+    (al abrir o cerrar un grupo, Fusion rehace igual la vista previa), repinta lo de la vez anterior: calcularlo
+    lleva medio segundo con una placa de 12 cuerpos y colores."""
     _clear(SL_GROUP_ID)
     layers, lines = [], []
     design = adsk.fusion.Design.cast(_app.activeProduct)
+    try:
+        sig = _sl_sig(inputs)
+    except Exception:
+        sig = None
+    last = _sl_state.get('drawn')
+    if sig is not None and last and last[0] == sig and design:
+        _sl_paint(design, last[1], last[2])
+        _app.activeViewport.refresh()
+        return
     try:
         s = _sl_read(inputs)
         _save_settings(s)
@@ -1887,6 +1925,7 @@ def _sl_draw(inputs):
     if _sl_state.get('html') != html:
         _sl_state['html'] = html
         inputs.itemById('sl_info').formattedText = html
+    _sl_state['drawn'] = (sig, layers, lines)
     if design:
         _sl_paint(design, layers, lines)
     _app.activeViewport.refresh()
@@ -2099,8 +2138,9 @@ class _SlCreatedHandler(adsk.core.CommandCreatedEventHandler):
             # anterior, que podría acabar en otro papel
             _ui.activeSelections.clear()
             _clear(API_GROUP_ID)   # lo que pintó show(): el diálogo pinta lo suyo y lo que cambie dejaría de valer
-            cmd.okButtonText = tr('Cerrar')   # guarda lo elegido; Enviar es un botón del diálogo
-            cmd.cancelButtonText = tr('Cancelar')
+            cmd.okButtonText = tr('Enviar')   # guarda, envía y cierra
+            cmd.cancelButtonText = tr('Cerrar')   # guarda y cierra (_SlDestroyHandler)
+            cmd.isExecutedWhenPreEmpted = False   # abrir otro comando no debe enviar
             cmd.setDialogInitialSize(380, 640)
             cmd.setDialogMinimumSize(380, 300)
             inputs = cmd.commandInputs
@@ -2122,7 +2162,8 @@ class _SlCreatedHandler(adsk.core.CommandCreatedEventHandler):
             _sl_state['cfgs'] = _sl_load(design, bodies) if design else {}
             _sl_state['touched'] = set()
             _sl_state['current'] = names.index(last) if last is not None else None
-            _sl_state['zoom'] = True   # al abrir, la cámara va al cuerpo que se ve (_SlPreviewHandler)
+            _sl_state.pop('camera', None)
+            _sl_state['zoom'] = 'body' if s['sl_solo'] else None   # la cámara va al cuerpo (_SlPreviewHandler)
             solo = inputs.addBoolValueInput('sl_solo', tr('Ver solo este cuerpo'), True, '', s['sl_solo'])
             solo.tooltip = tr('Mientras el diálogo está abierto, oculta todo lo demás. Al cerrarlo vuelve a verse.')
             plate = inputs.addBoolValueInput('sl_plate', tr('Incluir en la placa'), True, '', False)
@@ -2154,27 +2195,26 @@ class _SlCreatedHandler(adsk.core.CommandCreatedEventHandler):
                     sel.addSelectionFilter('Edges')
                     sel.setSelectionLimits(0, 0)
                     sel.tooltip = tips[key]
-            col = inputs.addBoolValueInput('sl_color', tr('Colores (AMS)'), True, '', s['sl_color'])
+            grp = inputs.addGroupCommandInput('grp_general', tr('Opciones generales'))
+            grp.isExpanded = False
+            grp.tooltip = tr('Valen para todos los cuerpos y todos los diseños.')
+            gi = grp.children
+            col = gi.addBoolValueInput('sl_color', tr('Colores (AMS)'), True, '', s['sl_color'])
             col.tooltip = tr('Pinta cada cara con el filamento de su color, según los aspectos de Fusion. Cada color '
                              'distinto va a un filamento: el del primer cuerpo es el 1 y los demás, por orden de '
                              'aparición. En el laminador, carga cada color en su número.')
-            dd = inputs.addDropDownCommandInput('sl_mesh', tr('Malla del STL'),
+            dd = gi.addDropDownCommandInput('sl_mesh', tr('Malla del STL'),
                                                 adsk.core.DropDownStyles.TextListDropDownStyle)
             for key, label, _, _ in SL_MESH:
                 dd.listItems.add(tr(label), key == s['sl_mesh'])
             dd.tooltip = tr('Separación máxima entre los triángulos y la superficie real. Alta basta para imprimir; '
                             'Muy alta es la de Orca y Bambu Studio al importar un STEP, pero da muchos más triángulos '
                             'y slicer-paint tarda más.')
-            dd = inputs.addDropDownCommandInput('sl_open', tr('Abrir en'), adsk.core.DropDownStyles.TextListDropDownStyle)
+            dd = gi.addDropDownCommandInput('sl_open', tr('Abrir en'), adsk.core.DropDownStyles.TextListDropDownStyle)
             for key, label in OPEN_IN:
                 dd.listItems.add(tr(label), key == s['sl_open'])
-            btn = inputs.addBoolValueInput('sl_send', '', False, '', False)
-            btn.text = tr('Enviar')
-            btn.isFullWidth = True
-            btn.tooltip = tr('Guarda lo elegido, exporta y lanza slicer-paint, y cierra el diálogo.')
-            btn = inputs.addBoolValueInput('sl_reset', '', False, '', False)
+            btn = inputs.addBoolValueInput('sl_reset', tr('Restablecer'), False, '', False)
             btn.text = tr('Restablecer')
-            btn.isFullWidth = True
             btn.tooltip = tr('Borra lo elegido en todos los cuerpos de este diseño (cama, placa, costura y soportes) y '
                              'vuelve las opciones a sus valores por defecto.')
             inputs.addTextBoxCommandInput('sl_info', tr('Resultado'), '', 9, True).isFullWidth = True
@@ -2228,19 +2268,26 @@ class _SlPreviewHandler(adsk.core.CommandEventHandler):
         if _sl_state.get('loading'):
             return
         inputs = args.command.commandInputs
-        _sl_draw(inputs)
         body = _sl_body(inputs)
+        # Fusion deshace la vista previa anterior antes de llamar aquí, también lo apagado (incluso lo apagado fuera
+        # de la vista previa, medido): se apaga lo primero, antes de pintar, que es lo lento, para que no se vea todo
+        # mientras tanto
         if body and inputs.itemById('sl_solo').value:
             try:
                 _sl_isolate(adsk.fusion.Design.cast(_app.activeProduct), body)
-                # sin esto, al volver a marcar la casilla el navegador ya lo tiene apagado pero la vista no cambia
-                _app.activeViewport.refresh()
             except Exception:
                 pass   # verlo todo no impide trabajar
-        if body and _sl_state.pop('zoom', False):
+        _sl_draw(inputs)
+        # sin esto, al volver a marcar la casilla el navegador ya lo tiene apagado pero la vista no cambia
+        _app.activeViewport.refresh()
+        zoom = _sl_state.pop('zoom', None)
+        if zoom:
             try:
                 _sl_state.setdefault('camera', _app.activeViewport.camera)   # la de antes del diálogo
-                _sl_zoom(body)
+                if zoom == 'all':
+                    _app.activeViewport.fit()   # ya se ve todo: que quepa
+                elif body:
+                    _sl_zoom(body)
             except Exception:
                 pass
 
@@ -2255,10 +2302,6 @@ class _SlChangedHandler(adsk.core.InputChangedEventHandler):
         if args.input.id == 'sl_reset':
             _sl_ask_reset()
             return
-        if args.input.id == 'sl_send':
-            _sl_state['send'] = True
-            args.firingEvent.sender.doExecute(True)   # como pulsar Cerrar, pero enviando (_SlExecuteHandler)
-            return
         try:
             if args.input.id == 'sl_body':
                 # lo del cuerpo anterior sigue en los campos: se aparta y se ponen los del nuevo
@@ -2268,8 +2311,10 @@ class _SlChangedHandler(adsk.core.InputChangedEventHandler):
                     _sl_state['touched'].add(prev)
                 _sl_state['current'] = new
                 if new is not None and new != prev:
-                    _sl_state['zoom'] = True
+                    _sl_state['zoom'] = 'body'
                     _sl_cfg_show(inputs, _sl_state['cfgs'].get(new) or _sl_empty(_load_settings()['sl_bed']))
+            elif args.input.id == 'sl_solo':
+                _sl_state['zoom'] = 'body' if args.input.value else 'all'
             elif args.input.id == 'sl_what' and _choice(inputs, 'sl_what', SL_WHAT) == 'plate':
                 if not _sl_plate(inputs):
                     inputs.itemById('sl_plate').value = True   # al pasar a placa, empieza por el cuerpo que se ve
@@ -2277,6 +2322,16 @@ class _SlChangedHandler(adsk.core.InputChangedEventHandler):
         except Exception:
             _ui.messageBox(tr('Enviar al laminador: error') + '\n' + traceback.format_exc())
         _sl_update_visibility(inputs)
+        if args.input.id in ['sl_face', 'sl_bed', 'sl_plate'] + ROLE_KEYS:
+            _sl_state['dirty'] = True
+        if _sl_state.get('dirty'):
+            # Cerrar guarda: lo que se escribe en el diseño con el diálogo abierto (o en destroy) Fusion lo deshace
+            # al cerrarlo, y ejecutar el comando sin cerrarlo falla con "reentrancy" si hay algo seleccionado. Se
+            # aparta una copia y se escribe cuando el diálogo ya se ha cerrado (_SlDestroyHandler, _SlSaveHandler)
+            try:
+                _sl_state['last'] = _sl_snapshot(inputs)
+            except Exception:
+                pass
         if args.input.id == 'sl_bed' and _choice(inputs, 'sl_bed', BEDS) == 'face':
             inputs.itemById('sl_face').hasFocus = True
 
@@ -2292,6 +2347,7 @@ def _sl_ask_reset():
     if answer == adsk.core.DialogResults.DialogYes:
         import threading
         _sl_state['resets'] = 0
+        _sl_state['no_store'] = True   # al cerrarse para restablecer, no se guarda lo que había
         threading.Timer(0.1, lambda: _app.fireCustomEvent(SL_RESET_EVENT)).start()
 
 
@@ -2309,6 +2365,64 @@ def _sl_reset(design):
     _ref_write(design, {})
     _save_settings(_sl_defaults())
     return gone
+
+
+def _sl_snapshot(inputs):
+    """Copia de lo elegido en el diálogo para cada cuerpo tocado, con entityToken en vez de objetos, para escribirla
+    en el diseño cuando el diálogo ya no esté (_sl_write_snapshot)."""
+    cfgs = dict(_sl_state['cfgs'])
+    current = _sl_state.get('current')
+    touched = set(_sl_state['touched'])
+    if current is not None:
+        cfgs[current] = _sl_cfg_read(inputs)
+        touched.add(current)
+
+    def tokens(ents):
+        return [e.entityToken for e in ents if e and e.isValid]
+    bodies = []
+    for i in sorted(touched):
+        cfg = cfgs[i]
+        frozen = {'bed': cfg['bed'], 'plate': cfg['plate'], 'face': tokens([cfg['face']])}
+        for k in ROLE_KEYS:
+            frozen[k] = tokens(cfg[k])
+        bodies.append((_sl_state['bodies'][i][1].entityToken, frozen))
+    return {'bodies': bodies}
+
+
+def _sl_write_snapshot(design, snap):
+    """Escribe en el diseño la copia de _sl_snapshot."""
+    def find(token):
+        found = design.findEntityByToken(token) if token else []
+        return found[0] if found else None
+    old_roles = list(design.findAttributes(ATTR_GROUP, ATTR_ROLE))
+    for body_token, frozen in snap['bodies']:
+        body = find(body_token)
+        if not body:
+            continue
+        cfg = {'bed': frozen['bed'], 'plate': frozen['plate'],
+               'face': next((e for e in map(find, frozen['face']) if e), None)}
+        for k in ROLE_KEYS:
+            cfg[k] = [e for e in map(find, frozen[k]) if e]
+        _sl_store_one(design, body, cfg, old_roles)
+
+
+class _SlSaveHandler(adsk.core.CustomEventHandler):
+    """Escribe en el diseño lo elegido, en cuanto el diálogo se ha cerrado con Cerrar."""
+    def notify(self, args):
+        try:
+            if _ui.activeCommand == SL_CMD_ID:   # aún se está cerrando: otra vez en un momento
+                _sl_state['save_tries'] = _sl_state.get('save_tries', 0) + 1
+                if _sl_state['save_tries'] < 20:
+                    import threading
+                    threading.Timer(0.2, lambda: _app.fireCustomEvent(SL_SAVE_EVENT)).start()
+                return
+            snap = _sl_state.pop('to_write', None)
+            design = adsk.fusion.Design.cast(_app.activeProduct)
+            if snap and design:
+                _sl_write_snapshot(design, snap)
+                _api_refresh()
+        except Exception:
+            _ui.messageBox(tr('Enviar al laminador: error') + '\n' + traceback.format_exc())
 
 
 class _SlResetHandler(adsk.core.CustomEventHandler):
@@ -2348,12 +2462,7 @@ class _SlExecuteHandler(adsk.core.CommandEventHandler):
         try:
             design = adsk.fusion.Design.cast(_app.activeProduct)
             inputs = args.command.commandInputs
-            if not _sl_state.pop('send', False):
-                # Cerrar: solo guarda lo elegido (Cancelar lo descarta)
-                _save_settings(_sl_read(inputs))
-                if design and _sl_state.get('bodies'):
-                    _sl_store(design, _sl_cfg_read(inputs))
-                return
+            _sl_state.pop('last', None)   # Enviar ya guarda (_sl_send): al cerrarse no hay que escribir nada
             msg = _sl_send(design, _sl_read(inputs), inputs)
             _sl_state['sent'] = msg
             if msg:
@@ -2368,8 +2477,14 @@ class _SlDestroyHandler(adsk.core.CommandEventHandler):
             if _sl_state.get('cmd') is not None and args.command != _sl_state['cmd']:
                 return   # se ha vuelto a pulsar el botón con el diálogo abierto: el nuevo ya está en marcha
             _clear(SL_GROUP_ID)
-            for k in ('cmd', 'html', 'cfgs', 'touched', 'current', 'bodies', 'shown', 'send', 'zoom'):
+            for k in ('cmd', 'html', 'cfgs', 'touched', 'current', 'bodies', 'shown', 'zoom', 'drawn'):
                 _sl_state.pop(k, None)
+            snap, dirty, no_store = (_sl_state.pop(k, None) for k in ('last', 'dirty', 'no_store'))
+            if snap and dirty and not no_store:
+                # cerrado con Cerrar (o con otro comando) después de cambiar algo
+                _sl_state['to_write'] = snap
+                _sl_state['save_tries'] = 0
+                _app.fireCustomEvent(SL_SAVE_EVENT)
             camera = _sl_state.pop('camera', None)
             if camera:
                 _app.activeViewport.camera = camera   # como ver solo el cuerpo, el acercamiento dura lo que el diálogo
@@ -2983,7 +3098,8 @@ def run(context):
         sl_def.commandCreated.add(h)
         _handlers.append(h)
         for ev_id, h in ((SL_DONE_EVENT, _SlDoneHandler()), (SL_SHOW_EVENT, _SlShowHandler()),
-                         (SL_RESET_EVENT, _SlResetHandler()), (API_SEND_EVENT, _ApiSendHandler())):
+                         (SL_RESET_EVENT, _SlResetHandler()), (SL_SAVE_EVENT, _SlSaveHandler()),
+                         (API_SEND_EVENT, _ApiSendHandler())):
             _app.unregisterCustomEvent(ev_id)
             _app.registerCustomEvent(ev_id).add(h)
             _handlers.append(h)
@@ -3012,6 +3128,7 @@ def stop(context):
         _app.unregisterCustomEvent(SL_DONE_EVENT)
         _app.unregisterCustomEvent(SL_SHOW_EVENT)
         _app.unregisterCustomEvent(SL_RESET_EVENT)
+        _app.unregisterCustomEvent(SL_SAVE_EVENT)
         _app.unregisterCustomEvent(API_SEND_EVENT)
         for pid in PANEL_IDS:
             panel = _panel(pid)

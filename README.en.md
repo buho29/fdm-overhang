@@ -138,20 +138,20 @@ In the assembly view, the same parts appear put together as in Fusion: the worm 
 |---|---|
 | Send | *This body*, in its own 3MF, or *Several on one plate*: all those ticked with *Include on the plate*, in a single 3MF |
 | Body | The body being shown and set up. Those on the plate are marked with ✔. Choosing it zooms the view to it without rotating; closing the dialog brings back the previous view |
-| Show only this body | While the dialog is open, hides everything else so the chosen body is easy to see. Everything shows again when it closes. Ticked by default |
+| Show only this body | While the dialog is open, hides everything else so the chosen body is easy to see. Everything shows again when it closes. Unticking it zooms out until everything fits. Ticked by default |
 | Include on the plate | This body goes on the plate |
 | Bed | *XY plane (Z up)*, *XZ plane (Y up)* or *Selected planar face*, chosen in *Face on the bed* |
 | Seam: Enforce on / Block on | Edges or faces where the seam should go, or where it must not. An edge can only enforce the seam if it rises relative to the layers |
 | Supports: Enforce on / Block on | Faces where supports are enforced, or not allowed. Only what faces down once the part is oriented counts |
+| General options | Group folded when the dialog opens, with the next three options. They apply to every body and every design |
 | Colours (AMS) | Paints each face with the filament of its colour, from the Fusion appearances. Each different colour goes to a filament: the first body's is 1 and the rest follow in order of appearance, also across the bodies on a plate. The list of colours and filaments is shown in *Result*. The project carries one filament per colour, with its colour: when printing, match each one to an AMS spool. With several bodies of different colours, each body colour goes on its own plate |
 | STL mesh | Maximum distance between the triangles and the surface: from *Low (0.05 mm)* to *Very high (0.003 mm)*. *High* is enough for printing; finer meshes take longer to process and to open |
 | Open in | *OrcaSlicer*, *Bambu Studio* or *Do not open*. The 3MF is prepared for the chosen slicer: each one needs its own |
-| Send | Saves what was chosen, exports, runs slicer-paint and closes the dialog (see below) |
 | Reset | Asks first, then clears what was chosen on every body of the design (bed, plate, seam and supports), sets the options back to their defaults and opens the dialog again, empty |
 
-While the dialog is open, what you choose is painted over the model: enforced seam in cyan, blocked seam in orange, enforced supports in green and blocked supports in red. The choices for each body are saved in the design with **Close** or **Send**, and come back when the dialog is opened again, also after closing and reopening the file. **Cancel** discards them. Bodies of a referenced component (from another file) keep their choices in the design you are editing, not in the other file.
+While the dialog is open, what you choose is painted over the model: enforced seam in cyan, blocked seam in orange, enforced supports in green and blocked supports in red. The choices for each body are saved in the design when the dialog closes, with **Close** or with **Send**, and come back when it is opened again, also after closing and reopening the file. Bodies of a referenced component (from another file) keep their choices in the design you are editing, not in the other file.
 
-The **Send** button asks where to save the 3MF. Next to it go each body's STL and part file, the slicer-paint log and, with several bodies, the plate file. Fusion stays free while slicer-paint works. When it finishes, the slicer opens, or a message appears if something fails.
+**Send**, at the bottom, saves what was chosen, closes the dialog and sends: first it asks where to save the 3MF. Next to it go each body's STL and part file, the slicer-paint log and, with several bodies, the plate file. Fusion stays free while slicer-paint works. When it finishes, the slicer opens, or a message appears if something fails.
 
 - **It needs [slicer-paint](#slicer-paint-for-send-to-slicer)**, which orients the part, paints the seam and supports and writes the 3MF. Without it, only the STL and the part file are saved, with the command to build the 3MF by hand.
 - **Several bodies:** each one is oriented with its own bed and carries its own choices. They are laid out in rows on the bed, looking for the squarest layout; if they don't fit, a warning says to arrange them in the slicer. With *Colours (AMS)*, each body colour gets its own plate. The slicer's assembly view shows them put together, as in Fusion. In Bambu Studio they also get an assembly guide, with the final assembly of all of them, to add the steps, joints and notes there.
