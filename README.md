@@ -1,4 +1,4 @@
-# Voladizos FDM (add-in de Fusion 360)
+# FDM-OVERHANG (add-in de Fusion 360)
 
 **Español** · [English](README.en.md)
 
@@ -14,6 +14,10 @@ Está en **DISEÑO > INSPECCIONAR > Voladizos FDM**. En el mismo panel hay otros
 
 - [Espesor y espacios](#espesor-y-espacios) pinta el espesor de las paredes o el espacio entre superficies.
 - [Enviar al laminador](#enviar-al-laminador) manda uno o varios cuerpos a OrcaSlicer o Bambu Studio, con la cara que va sobre la cama, dónde forzar o prohibir la costura y los soportes y, si quieres, los colores de las caras para imprimir con varios filamentos.
+
+[![Vídeo: de Fusion 360 a Bambu Studio](img/video.jpg)](https://youtu.be/AkVifhqEgZc)
+
+[Vídeo de casi 4 minutos](https://youtu.be/AkVifhqEgZc) con un proyecto real: análisis, envío al laminador y la placa en Bambu Studio.
 
 ![Voladizos a 45°](img/ejemplo.png)
 

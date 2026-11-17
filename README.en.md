@@ -1,4 +1,4 @@
-# FDM overhangs (Fusion 360 add-in)
+# FDM-OVERHANG (Fusion 360 add-in)
 
 [Español](README.md) · **English**
 
@@ -14,6 +14,10 @@ It is in **DESIGN > INSPECT > FDM overhangs**. The same panel has two more butto
 
 - [Thickness and gaps](#thickness-and-gaps) paints the wall thickness or the gap between surfaces.
 - [Send to slicer](#send-to-slicer) sends one or several bodies to OrcaSlicer or Bambu Studio, with the face that goes on the bed, where to enforce or block the seam and supports and, if you want, the colours of the faces for multi-filament printing.
+
+[![Video: from Fusion 360 to Bambu Studio](img/video.jpg)](https://youtu.be/eX-VTa9UbXw)
+
+[A video of almost 4 minutes](https://youtu.be/eX-VTa9UbXw) with a real project: analysis, sending to the slicer and the plate in Bambu Studio.
 
 ![Overhangs at 45°](img/ejemplo.png)
 
