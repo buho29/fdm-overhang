@@ -20,7 +20,7 @@ Copy-Item (Join-Path $root 'overhang\*.py') (Join-Path $addin 'overhang')
 Copy-Item (Join-Path $root 'resources\*.png') (Join-Path $addin 'resources')
 Copy-Item (Join-Path $root 'resources\thickness\*.png') (Join-Path $addin 'resources\thickness')
 Copy-Item (Join-Path $root 'resources\slicer\*.png') (Join-Path $addin 'resources\slicer')
-Copy-Item (Join-Path $root 'img\*.png') (Join-Path $addin 'img')   # las imágenes de los README
+Copy-Item (Join-Path $root 'img\*.png'), (Join-Path $root 'img\*.jpg') (Join-Path $addin 'img')   # las imágenes de los README
 Copy-Item (Join-Path $PSScriptRoot 'instalar.bat'), (Join-Path $PSScriptRoot 'desinstalar.bat'),
           (Join-Path $PSScriptRoot 'LEEME.txt'), (Join-Path $PSScriptRoot 'README.txt') $stage
 
