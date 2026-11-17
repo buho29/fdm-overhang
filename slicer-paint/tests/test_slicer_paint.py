@@ -907,6 +907,17 @@ def test_arrange_reports_parts_that_do_not_fit():
     assert plate.arrange([(235.0, 235.0)], excluded=None)[1]
 
 
+def test_arrange_keeps_the_front_edge_free():
+    # La línea de purga va por delante (Y = 0): 5 mm libres aunque la pieza quepa centrada justo.
+    centers, fits = plate.arrange([(40.0, 250.0)], excluded=None)
+    assert fits and centers[0][1] - 125.0 == pytest.approx(plate.FRONT_MARGIN_MM)
+    assert not plate.arrange([(40.0, 252.0)], excluded=None)[1]
+    # Con aire para soportes, que puede salirse de la cama, también.
+    sizes = [(120.0, 120.0)] * 2
+    centers, fits = plate.arrange(sizes, excluded=None, margins=[plate.SUPPORT_MARGIN_MM] * 2)
+    assert fits and min(c[1] - 60.0 for c in centers) >= plate.FRONT_MARGIN_MM - 1e-6
+
+
 def _apart(centers, sizes, i, j):
     """Hueco entre las huellas de dos piezas (en el eje en que están separadas)."""
     return (np.abs(np.subtract(centers[i], centers[j])) - np.add(sizes[i], sizes[j]) / 2).max()
@@ -928,6 +939,48 @@ def test_arrange_drops_the_support_room_if_it_does_not_fit():
     centers, fits = plate.arrange(sizes, excluded=None, margins=[plate.SUPPORT_MARGIN_MM] * 4)
     assert fits
     assert (centers, fits) == plate.arrange(sizes, excluded=None)
+
+
+def test_split_keeps_one_bed_when_they_fit():
+    sizes = [(60.0, 60.0)] * 3
+    assert plate.split(sizes) == [([0, 1, 2], *plate.arrange(sizes))]
+
+
+def test_split_fills_more_beds_when_they_do_not_fit():
+    sizes = [(100.0, 100.0)] * 5 + [(30.0, 30.0)]
+    beds = plate.split(sizes)
+    assert len(beds) == 2 and all(fits for _, _, fits in beds)
+    assert sorted(i for chosen, _, _ in beds for i in chosen) == list(range(6))
+    for chosen, centers, _ in beds:
+        assert chosen == sorted(chosen)
+        bed_sizes = [sizes[i] for i in chosen]
+        assert plate.arrange(bed_sizes)[1]
+        for a in range(len(chosen)):
+            for b in range(a):
+                assert _apart(centers, bed_sizes, a, b) >= plate.PART_GAP_MM - 1e-6
+    # la pequeña aprovecha el hueco de la primera cama
+    assert 5 in beds[0][0]
+
+
+def test_split_keeps_the_support_room_unless_it_costs_a_bed():
+    margin = plate.SUPPORT_MARGIN_MM
+    # Cuatro de 100 caben con su aire en una cama; la quinta, en otra.
+    sizes = [(100.0, 100.0)] * 5
+    beds = plate.split(sizes, excluded=None, margins=[margin] * 5)
+    assert [chosen for chosen, _, _ in beds] == [[0, 1, 2, 3], [4]]
+    first = beds[0][1]
+    assert min(_apart(first, sizes, a, b) for a in range(4) for b in range(a)) == pytest.approx(
+        plate.PART_GAP_MM + 2 * margin)
+    # Con su aire, de 120 solo cabe una por cama: mejor dos camas sin aire que cinco.
+    sizes = [(120.0, 120.0)] * 5
+    beds = plate.split(sizes, excluded=None, margins=[margin] * 5)
+    assert [chosen for chosen, _, _ in beds] == [[0, 1, 2, 3], [4]]
+    assert all(fits for _, _, fits in beds)
+
+
+def test_split_puts_a_part_too_big_on_its_own_bed():
+    beds = plate.split([(300.0, 50.0), (50.0, 50.0)])
+    assert [(chosen, fits) for chosen, _, fits in beds] == [([1], True), ([0], False)]
 
 
 def test_support_room_with_supports_or_overhang():
@@ -1076,6 +1129,20 @@ def test_cli_plate_puts_each_body_colour_on_its_own_plate(tmp_path, capsys):
     orca = tmp_path / "orca.3mf"
     assert cli.main(["--plate", str(placa), "-o", str(orca), "--target", "orca"]) == 0
     assert _read_entry(orca, "Metadata/model_settings.config").count("<plate>") == 2
+
+
+def test_cli_plate_adds_beds_when_the_parts_do_not_fit(tmp_path, capsys):
+    for name in "ABC":
+        trimesh.creation.box(extents=(150, 150, 10)).export(tmp_path / f"{name}.stl")
+    placa = _write_plate(tmp_path / "placa.json", [{"stl": f"{n}.stl"} for n in "ABC"])
+    out = tmp_path / "placa.3mf"
+    assert cli.main(["--plate", str(placa), "-o", str(out), "--target", "bambu"]) == 0
+    captured = capsys.readouterr()
+    assert "Placa 1: A" in captured.out and "Placa 3: C" in captured.out
+    assert "no caben" not in captured.err
+    assert _read_entry(out, "Metadata/model_settings.config").count("<plate>") == 3
+    a, b, c = read_painted(out)
+    assert a.vertices[:, 0].max() < 256 and b.vertices[:, 0].min() > 307.2
 
 
 def _matrix(text):

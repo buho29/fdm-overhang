@@ -407,13 +407,19 @@ def main(argv: list[str] | None = None) -> int:
     groups = plate_groups(parts)
     placed: dict[int, tuple[int, tuple[float, float]]] = {}
     crowded = []
-    for number, (filament, members) in enumerate(groups, 1):
-        centers, fits = plate.arrange([tuple(parts[i].oriented.extents[:2]) for i in members],
-                                      margins=[margins[i] for i in members])
-        placed.update({i: (number, center) for i, center in zip(members, centers)})
-        if not fits:
-            crowded.append(number)
-    names = [plate_name(parts, filament) if len(groups) > 1 else "" for filament, _ in groups]
+    beds: list[list[int]] = []   # piezas de cada placa
+    names = []
+    for filament, members in groups:
+        # en varias camas si no caben en una
+        split = plate.split([tuple(parts[i].oriented.extents[:2]) for i in members],
+                            margins=[margins[i] for i in members])
+        name = plate_name(parts, filament) if len(groups) > 1 else ""
+        for part_number, (chosen, centers, fits) in enumerate(split, 1):
+            beds.append([members[k] for k in chosen])
+            placed.update({members[k]: (len(beds), center) for k, center in zip(chosen, centers)})
+            if not fits:
+                crowded.append(len(beds))
+            names.append(f"{name} ({part_number}/{len(split)})" if name and len(split) > 1 else name)
     kept_plates = previous.plates if previous else []
     plate_settings = [{"plater_name": name, **(kept_plates[n] if n < len(kept_plates) else {})}
                       for n, name in enumerate(names)]
@@ -434,13 +440,14 @@ def main(argv: list[str] | None = None) -> int:
         if args.plate:
             print(f"Pieza {number}: {part.name}")
         print_summary(args, part)
-    if len(groups) > 1:
-        for number, ((_, members), name) in enumerate(zip(groups, names), 1):
-            print(f"Placa {number} ({name[:1].lower() + name[1:]}): {', '.join(parts[i].name for i in members)}")
+    if len(beds) > 1:
+        for number, (members, name) in enumerate(zip(beds, names), 1):
+            label = f" ({name[:1].lower() + name[1:]})" if name else ""
+            print(f"Placa {number}{label}: {', '.join(parts[i].name for i in members)}")
     for number in crowded:
         width, depth = plate.P1S_BED_SIZE
-        what = "Las piezas no caben" if len(parts) > 1 else "La pieza no cabe"
-        where = f" de la placa {number}" if len(groups) > 1 else ""
+        what = "Las piezas no caben" if len(beds[number - 1]) > 1 else "La pieza no cabe"
+        where = f" de la placa {number}" if len(beds) > 1 else ""
         print(f"Aviso: {what} en la cama{where} de {width:.0f} × {depth:.0f} mm; ordénalas en el laminador",
               file=sys.stderr)
     print(f"Escrito: {output} (para {target}{f', {len(parts)} piezas' if args.plate else ''})")

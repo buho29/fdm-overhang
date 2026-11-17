@@ -68,9 +68,9 @@ El archivo de placa enumera las piezas: el STL de cada una, su archivo de pieza 
 - Las opciones generales valen para todas: `--overhang-limit`, `--support-overhang`, `--support-mode`, `--support-style`, `--seam-radius`, `--paint-resolution`, `--target`, `--project-settings`, `--fresh` y `--open`.
 - `--orient`, `--part`, `--fusion`, `--seam`, `--seam-block`, `--support-enforce` y `--support-block` son de una sola pieza y dan error con `--plate`. Lo que hacen va en el archivo de pieza de cada una.
 - Cada pieza es un objeto con sus propios ajustes: `enable_support` solo va en las que tienen pintura de soportes.
-- Las piezas se colocan en filas sobre la cama de la P1S, con 5 mm entre ellas, y 10 mm más por lado alrededor de las que llevan soportes o tienen voladizo (los soportes se suelen activar luego en el laminador), que los de árbol se abren fuera de la pieza (si así no caben, sin ese aire): de más a menos fondo y con el ancho de fila que deja el conjunto más cuadrado. El conjunto se centra. Si no caben, el archivo se escribe igual y avisa: hay que ordenarlas en el laminador.
+- Las piezas se colocan en filas sobre la cama de la P1S, con 5 mm entre ellas, y 10 mm más por lado alrededor de las que llevan soportes o tienen voladizo (los soportes se suelen activar luego en el laminador), que los de árbol se abren fuera de la pieza (si así no caben, sin ese aire): de más a menos fondo y con el ancho de fila que deja el conjunto más cuadrado. El conjunto se centra, dejando libres los 5 mm del borde delantero, por donde va la línea de purga. Si no caben en una cama, se reparten en más placas: de la más grande a la más pequeña, cada placa se llena con las que aún quepan, con su aire salvo que así hagan falta más placas. Solo si una pieza no cabe ni sola, avisa.
 - La vista de ensamblaje del laminador enseña las piezas montadas, tal como están en sus STL. Con destino Bambu Studio, el 3MF lleva además la guía de montaje: solo el montaje final con todas las piezas, para añadir los pasos en Bambu.
-- **Una placa por color:** si las piezas llevan colores (archivo de pieza con `color`) y hay más de un filamento de cuerpo, cada filamento de cuerpo va en su placa, que se llama «Filamento N #RRGGBB». La pintura de color se conserva.
+- **Una placa por color:** si las piezas llevan colores (archivo de pieza con `color`) y hay más de un filamento de cuerpo, cada filamento de cuerpo va en su placa, que se llama «Filamento N #RRGGBB» (y «Filamento N #RRGGBB (1/2)»… si sus piezas necesitan más de una). La pintura de color se conserva.
 - Los avisos y errores dicen de qué pieza son. Si una pieza falla, no se escribe nada y sale con código 2.
 
 Las cajas usan las coordenadas de la pieza ya orientada, con Z mínima 0 y sin el centrado en la cama. Si una caja empieza por un número negativo, escríbela con `=`: `--support-block=-60,0,-1,0,50,60`.
@@ -115,7 +115,7 @@ Sin proyecto completo, Bambu Studio carga solo la geometría y la pintura, y bor
 
 - Las reglas por ángulo y `--seam back` pintan triángulos enteros, porque el límite ya es la cara. Solo las cajas y las aristas recortan.
 - Un triángulo enorme limita la precisión de una caja: se divide hasta 8 niveles, y eso deja unos 0,4 mm en una arista de 100 mm.
-- La colocación en filas no gira las piezas ni las encaja: si así no caben, hay que usar *Organizar* en el laminador.
+- La colocación en filas no gira las piezas ni las encaja: puede usar más placas de las justas; *Organizar* en el laminador lo aprieta más.
 - `--seam back` pinta todas las paredes orientadas a +Y, no solo la exterior.
 
 ## Verificación

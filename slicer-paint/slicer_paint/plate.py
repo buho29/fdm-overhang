@@ -18,6 +18,8 @@ P1S_EXCLUDED = ((0.0, 0.0), (18.0, 28.0))
 PART_GAP_MM = 5.0
 # Aire de más por lado alrededor de una pieza con soportes: los de árbol se abren fuera de su huella.
 SUPPORT_MARGIN_MM = 10.0
+# Hueco libre en el borde delantero de la cama (Y = 0), donde la impresora traza la línea de purga.
+FRONT_MARGIN_MM = 5.0
 _PLATE_KEYS = {"version", "units", "parts"}
 _PART_KEYS = {"stl", "fusion", "name"}
 
@@ -84,19 +86,78 @@ def arrange(sizes: list[tuple[float, float]], bed_size: tuple[float, float] = P1
     detrás. Se prueban varios anchos de fila y se queda el conjunto más cuadrado que cabe: el de
     menor lado mayor y, si empatan, el de menos área. Cada fila se centra en X y el conjunto se
     centra en la cama, así que una sola pieza queda en el centro. Si no caben, se colocan en filas
-    tan anchas como la cama y se devuelve False.
+    tan anchas como la cama y se devuelve False. Los FRONT_MARGIN_MM del borde delantero quedan libres.
 
     margins: aire de más alrededor de cada pieza (mm por lado), para los soportes que salen de su
     huella, como los de árbol. Entre dos piezas queda gap más el de las dos. Si con ese aire no
     caben, se colocan sin él.
     """
-    if margins and any(margins):
-        grown = [(w + 2 * m, d + 2 * m) for (w, d), m in zip(sizes, margins)]
-        centers, fits = _arrange(grown, bed_size, gap, excluded)
-        # el aire puede salirse de la cama: solo cuenta que quepan las piezas
-        if _fits(sizes, centers, bed_size, excluded):
-            return centers, True
+    roomy = _arrange_roomy(sizes, bed_size, gap, excluded, margins)
+    if roomy is not None:
+        return roomy, True
     return _arrange(sizes, bed_size, gap, excluded)
+
+
+def split(sizes: list[tuple[float, float]], bed_size: tuple[float, float] = P1S_BED_SIZE,
+          gap: float = PART_GAP_MM,
+          excluded: tuple[tuple[float, float], tuple[float, float]] | None = P1S_EXCLUDED,
+          margins: list[float] | None = None,
+          ) -> list[tuple[list[int], list[tuple[float, float]], bool]]:
+    """Reparte las piezas en tantas camas como hagan falta: [(índices, centros, caben)] por cama,
+    con los índices en el orden recibido.
+
+    Si caben todas en una (con el aire de los soportes o, si no, sin él), una sola, como arrange.
+    Si no, se llenan camas de una en una: de la pieza más grande a la más pequeña, entra en la cama
+    cada una que todavía quepa. Se reparten con el aire de los soportes salvo que así hagan falta
+    más camas que sin él. Una pieza que sola no cabe va en su cama, que sale con caben = False.
+    """
+    margins = list(margins) if margins else [0.0] * len(sizes)
+    centers, fits = arrange(sizes, bed_size, gap, excluded, margins)
+    if fits or len(sizes) < 2:
+        return [(list(range(len(sizes))), centers, fits)]
+    beds = _fill(sizes, [0.0] * len(sizes), bed_size, gap, excluded)
+    if any(margins):
+        roomy = _fill(sizes, margins, bed_size, gap, excluded)
+        if len(roomy) <= len(beds):
+            beds = roomy
+    out = []
+    for chosen in beds:
+        # arrange vuelve a dejar el aire donde quepa
+        centers, fits = arrange([sizes[i] for i in chosen], bed_size, gap, excluded,
+                                [margins[i] for i in chosen])
+        out.append((chosen, centers, fits))
+    return out
+
+
+def _fill(sizes, margins, bed_size, gap, excluded) -> list[list[int]]:
+    """Piezas de cada cama, llenándolas de una en una con las que quepan con su aire, de la más
+    grande a la más pequeña. La que no cabe ni sola va sola."""
+    left = sorted(range(len(sizes)), key=lambda i: (-sizes[i][0] * sizes[i][1], i))
+    beds = []
+    while left:
+        chosen = []
+        for i in left:
+            trial = chosen + [i]
+            if _arrange_roomy([sizes[j] for j in trial], bed_size, gap, excluded,
+                              [margins[j] for j in trial], always=True) is not None:
+                chosen = trial
+        chosen = chosen or [left[0]]
+        beds.append(sorted(chosen))
+        left = [i for i in left if i not in chosen]
+    return beds
+
+
+def _arrange_roomy(sizes, bed_size, gap, excluded, margins, always=False):
+    """Centros con el aire de margins alrededor de cada pieza, o None si así no caben. Sin aire
+    que dejar, None, salvo con always (entonces es como _arrange)."""
+    if not (margins and any(margins)):
+        if not always:
+            return None
+        margins = [0.0] * len(sizes)
+    grown = [(w + 2 * m, d + 2 * m) for (w, d), m in zip(sizes, margins)]
+    centers, _ = _arrange(grown, bed_size, gap, excluded)
+    # el aire puede salirse de la cama: solo cuenta que quepan las piezas
+    return centers if _fits(sizes, centers, bed_size, excluded) else None
 
 
 def _arrange(sizes, bed_size, gap, excluded) -> tuple[list[tuple[float, float]], bool]:
@@ -156,6 +217,10 @@ def _shelves(sizes, order, limit, bed_size, gap) -> list[tuple[float, float]]:
             centers[i] = (x + w / 2, y)
             x += w + gap
         top -= row_depth + gap
+    # centradas, pero sin pisar el hueco del borde delantero
+    front = min((centers[i][1] - sizes[i][1] / 2 for i in range(len(sizes))), default=FRONT_MARGIN_MM)
+    if front < FRONT_MARGIN_MM:
+        centers = [(x, y + FRONT_MARGIN_MM - front) for x, y in centers]
     return centers
 
 
@@ -164,7 +229,7 @@ def _fits(sizes, centers, bed_size, excluded) -> bool:
     for (w, d), (cx, cy) in zip(sizes, centers):
         low = np.array([cx - w / 2, cy - d / 2])
         high = np.array([cx + w / 2, cy + d / 2])
-        if (low < -eps).any() or (high > np.array(bed_size) + eps).any():
+        if (low < -eps).any() or low[1] < FRONT_MARGIN_MM - eps or (high > np.array(bed_size) + eps).any():
             return False
         if excluded is not None:
             (ex0, ey0), (ex1, ey1) = excluded
