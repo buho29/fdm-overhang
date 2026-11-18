@@ -171,7 +171,7 @@ Los detalles de slicer-paint, como sus opciones y el formato del archivo de piez
 Lo mismo se puede hacer sin abrir el diálogo, con funciones del complemento: así lo usa Claude por un MCP de Fusion que ejecute Python. Guardan lo elegido igual que el diálogo, así que al abrirlo sale marcado y se puede corregir a mano. Las medidas van en mm, en las coordenadas del diseño.
 
 ```python
-m = next(v for v in list(sys.modules.values()) if getattr(v, 'SL_CMD_ID', None) == 'buhoFdmSlicer')
+m = sys.modules['overhang.ui.api']                       # las funciones del complemento
 m.analyze('Caja')                                        # voladizos, puentes y apoyo, en mm²
 m.mark(m.edges_where('Caja', along='up', box=((None, 15, None), None)), 'seam_on')
 m.mark(m.faces_where('Caja', overhang=True), 'support_on')

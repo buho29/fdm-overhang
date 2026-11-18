@@ -1,4 +1,4 @@
-# Ayudas puras de la API sin diálogo de "Enviar al laminador" (funciones públicas al final de FDMOverhang.py): los
+# Ayudas puras de la API sin diálogo de "Enviar al laminador" (funciones públicas en overhang/ui/api.py): los
 # nombres de los papeles y los filtros geométricos para elegir caras y aristas. Sin Fusion, para poder probarlas.
 import math
 

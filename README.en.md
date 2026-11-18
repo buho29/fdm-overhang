@@ -171,7 +171,7 @@ The slicer-paint details, such as its options and the part file format, are in [
 The same can be done without opening the dialog, with functions of the add-in: this is how Claude uses it through a Fusion MCP that runs Python. They store the choices exactly like the dialog, so they show up marked when you open it and you can correct them by hand. Measurements are in mm, in design coordinates.
 
 ```python
-m = next(v for v in list(sys.modules.values()) if getattr(v, 'SL_CMD_ID', None) == 'buhoFdmSlicer')
+m = sys.modules['overhang.ui.api']                       # the add-in's functions
 m.analyze('Box')                                         # overhangs, bridges and bed contact, in mm²
 m.mark(m.edges_where('Box', along='up', box=((None, 15, None), None)), 'seam_on')
 m.mark(m.faces_where('Box', overhang=True), 'support_on')
